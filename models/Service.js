@@ -35,6 +35,12 @@ const Service = sequelize.define('Service', {
     type: DataTypes.BOOLEAN,
     defaultValue: false
   }
+}, {
+  indexes: [
+    { fields: ['userId'] },
+    { fields: ['category'] },
+    { fields: ['title'] }
+  ]
 });
 
 module.exports = Service;

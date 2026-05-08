@@ -25,6 +25,9 @@ exports.getDashboard = async (req, res, next) => {
         fullName: user.fullName,
         email: user.email,
         phoneNumber: user.phoneNumber,
+        locationLabel: user.locationLabel,
+        latitude: user.latitude,
+        longitude: user.longitude,
         role: user.role,
         rating: user.rating,
         tier: user.tier,
@@ -111,7 +114,7 @@ exports.upgradeAccount = async (req, res, next) => {
 // @access  Private
 exports.updateProfile = async (req, res, next) => {
   try {
-    const { fullName, email, phoneNumber } = req.body || {};
+    const { fullName, email, phoneNumber, locationLabel, latitude, longitude } = req.body || {};
 
     const user = await User.findByPk(req.user.id);
     if (!user) {
@@ -122,6 +125,13 @@ exports.updateProfile = async (req, res, next) => {
     if (fullName) user.fullName = fullName;
     if (email) user.email = email;
     if (phoneNumber) user.phoneNumber = phoneNumber;
+    if (locationLabel) user.locationLabel = locationLabel.trim();
+    if (latitude !== undefined && latitude !== null && latitude !== '') {
+      user.latitude = Number(latitude);
+    }
+    if (longitude !== undefined && longitude !== null && longitude !== '') {
+      user.longitude = Number(longitude);
+    }
 
     await user.save();
 
@@ -130,7 +140,10 @@ exports.updateProfile = async (req, res, next) => {
       user: {
         fullName: user.fullName,
         email: user.email,
-        phoneNumber: user.phoneNumber
+        phoneNumber: user.phoneNumber,
+        locationLabel: user.locationLabel,
+        latitude: user.latitude,
+        longitude: user.longitude
       }
     });
   } catch (error) {
@@ -241,6 +254,48 @@ exports.updateStatus = async (req, res, next) => {
     res.json({
       message: 'Status updated successfully',
       availabilityStatus: user.availabilityStatus
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Update user location
+// @route   PUT /api/location
+// @access  Private
+exports.updateLocation = async (req, res, next) => {
+  try {
+    const { locationLabel, latitude, longitude } = req.body || {};
+    const normalizedLatitude = Number(latitude);
+    const normalizedLongitude = Number(longitude);
+
+    if (
+      !locationLabel ||
+      Number.isNaN(normalizedLatitude) ||
+      Number.isNaN(normalizedLongitude)
+    ) {
+      res.status(400);
+      throw new Error('Valid location name and coordinates are required');
+    }
+
+    const user = await User.findByPk(req.user.id);
+    if (!user) {
+      res.status(404);
+      throw new Error('User not found');
+    }
+
+    user.locationLabel = locationLabel.trim();
+    user.latitude = normalizedLatitude;
+    user.longitude = normalizedLongitude;
+    await user.save();
+
+    res.json({
+      message: 'Location updated successfully',
+      location: {
+        locationLabel: user.locationLabel,
+        latitude: user.latitude,
+        longitude: user.longitude
+      }
     });
   } catch (error) {
     next(error);

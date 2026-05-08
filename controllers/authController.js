@@ -6,6 +6,9 @@ const serializeUser = (user) => ({
   fullName: user.fullName,
   email: user.email,
   phoneNumber: user.phoneNumber,
+  locationLabel: user.locationLabel,
+  latitude: user.latitude,
+  longitude: user.longitude,
   role: user.role,
   rating: user.rating,
   tier: user.tier,
@@ -28,6 +31,9 @@ exports.registerUser = async (req, res, next) => {
       email,
       password,
       phoneNumber,
+      locationLabel,
+      latitude,
+      longitude,
       role,
       serviceCategory,
       serviceTitle,
@@ -41,10 +47,30 @@ exports.registerUser = async (req, res, next) => {
     const normalizedDescription = serviceDescription
       ? serviceDescription.trim()
       : null;
+    const normalizedLocationLabel = locationLabel ? locationLabel.trim() : null;
+    const normalizedLatitude =
+      latitude === '' || latitude === null || typeof latitude === 'undefined'
+        ? null
+        : Number(latitude);
+    const normalizedLongitude =
+      longitude === '' || longitude === null || typeof longitude === 'undefined'
+        ? null
+        : Number(longitude);
     const normalizedBasePrice =
       basePrice === '' || basePrice === null || typeof basePrice === 'undefined'
         ? null
         : Number(basePrice);
+
+    if (
+      !normalizedLocationLabel ||
+      normalizedLatitude === null ||
+      normalizedLongitude === null ||
+      Number.isNaN(normalizedLatitude) ||
+      Number.isNaN(normalizedLongitude)
+    ) {
+      res.status(400);
+      throw new Error('Location name and coordinates are required');
+    }
 
     if (normalizedRole === 'provider') {
       if (
@@ -71,6 +97,9 @@ exports.registerUser = async (req, res, next) => {
       email,
       password,
       phoneNumber,
+      locationLabel: normalizedLocationLabel,
+      latitude: normalizedLatitude,
+      longitude: normalizedLongitude,
       role: normalizedRole,
       serviceCategory: normalizedRole === 'provider' ? normalizedCategory : null,
       serviceTitle: normalizedRole === 'provider' ? normalizedTitle : null,

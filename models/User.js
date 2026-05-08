@@ -24,6 +24,18 @@ const User = sequelize.define('User', {
     type: DataTypes.STRING,
     allowNull: false
   },
+  locationLabel: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  latitude: {
+    type: DataTypes.DECIMAL(10, 8),
+    allowNull: true
+  },
+  longitude: {
+    type: DataTypes.DECIMAL(11, 8),
+    allowNull: true
+  },
   password: {
     type: DataTypes.STRING,
     allowNull: false
@@ -81,6 +93,12 @@ const User = sequelize.define('User', {
     defaultValue: false
   }
 }, {
+  indexes: [
+    { fields: ['role'] },
+    { fields: ['availabilityStatus'] },
+    { fields: ['latitude'] },
+    { fields: ['longitude'] }
+  ],
   hooks: {
     beforeCreate: async (user) => {
       if (user.password) {
