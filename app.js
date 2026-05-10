@@ -6,6 +6,7 @@ const sequelize = require("./config/database");
 const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
 const serviceRoutes = require("./routes/serviceRoutes");
+const orderRoutes = require("./routes/orderRoutes");
 
 const app = express();
 
@@ -19,6 +20,7 @@ app.use(morgan("dev"));
 app.use("/api/auth", authRoutes);
 app.use("/api", userRoutes);
 app.use("/api/services", serviceRoutes);
+app.use("/api/orders", orderRoutes);
 
 app.get("/", (req, res) => {
   res.send("Edel API is running...");
