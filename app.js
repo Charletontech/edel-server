@@ -1,4 +1,6 @@
 const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
 const cors = require("cors");
 const morgan = require("morgan");
 require("dotenv").config();
@@ -9,6 +11,15 @@ const serviceRoutes = require("./routes/serviceRoutes");
 const orderRoutes = require("./routes/orderRoutes");
 
 const app = express();
+const httpServer = http.createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: "*", // Adjust this in production
+    methods: ["GET", "POST"]
+  }
+});
+
+app.set('io', io);
 
 // Middleware
 app.use(cors());
@@ -51,10 +62,25 @@ const startServer = async () => {
     await sequelize.sync({ alter: true });
     console.log("Database synced successfully.");
 
-    const server = app.listen(PORT, () => {
+    const server = httpServer.listen(PORT, () => {
       console.log(
         `Server running in ${process.env.NODE_ENV || "development"} mode on port ${PORT}`,
       );
+    });
+    
+    // Socket.io connection handling
+    io.on('connection', (socket) => {
+      console.log('A user connected:', socket.id);
+      
+      // Clients can join a room based on their userId or orderId to receive targeted updates
+      socket.on('joinRoom', (room) => {
+        socket.join(room);
+        console.log(`Socket ${socket.id} joined room ${room}`);
+      });
+
+      socket.on('disconnect', () => {
+        console.log('User disconnected:', socket.id);
+      });
     });
 
     // Handle server errors

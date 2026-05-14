@@ -87,6 +87,9 @@ exports.getDiscoveryFeed = async (req, res, next) => {
     }
 
     const providerWhere = {
+      id: {
+        [Op.ne]: currentUser.id
+      },
       role: {
         [Op.in]: ['provider', 'both']
       },

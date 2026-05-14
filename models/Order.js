@@ -68,6 +68,14 @@ const Order = sequelize.define('Order', {
     type: DataTypes.TEXT,
     allowNull: true
   },
+  completionToken: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  completionTokenExpiresAt: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
   reportMessage: {
     type: DataTypes.TEXT,
     allowNull: true

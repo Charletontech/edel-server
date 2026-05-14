@@ -6,7 +6,9 @@ const {
   acceptOrder,
   declineOrder,
   cancelOrder,
-  reportOrder
+  reportOrder,
+  generateCompletionToken,
+  completeOrder
 } = require('../controllers/orderController');
 const { startSession, verifySession } = require('../controllers/verificationController');
 const { protect } = require('../middleware/authMiddleware');
@@ -21,5 +23,7 @@ router.post('/:id/accept', acceptOrder);
 router.post('/:id/decline', declineOrder);
 router.post('/:id/cancel', cancelOrder);
 router.post('/:id/report', reportOrder);
+router.post('/:id/generate-token', generateCompletionToken);
+router.post('/:id/complete', completeOrder);
 
 module.exports = router;

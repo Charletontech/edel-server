@@ -1,8 +1,9 @@
 const { Op } = require('sequelize');
 const { Order, Service, User } = require('../models');
 const { haversineDistanceKm } = require('../utils/location');
+const crypto = require('crypto');
 
-const OPEN_STATUSES = ['pending', 'accepted'];
+const OPEN_STATUSES = ['pending', 'accepted', 'in_progress'];
 
 const canUseCustomerFeatures = (role) => ['customer', 'both'].includes(role);
 const canUseProviderFeatures = (role) => ['provider', 'both'].includes(role);
@@ -413,6 +414,119 @@ exports.reportOrder = async (req, res, next) => {
 
     res.json({
       message: 'Report submitted successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Customer generates confirmatory token
+// @route   POST /api/orders/:id/generate-token
+// @access  Private
+exports.generateCompletionToken = async (req, res, next) => {
+  try {
+    if (!canUseCustomerFeatures(req.user.role)) {
+      res.status(403);
+      throw new Error('Only customers can generate a completion token');
+    }
+
+    const order = await Order.findByPk(req.params.id);
+    if (!order) {
+      res.status(404);
+      throw new Error('Order not found');
+    }
+
+    if (order.customerId !== req.user.id) {
+      res.status(403);
+      throw new Error('You are not authorized for this order');
+    }
+
+    if (order.status !== 'in_progress') {
+      res.status(400);
+      throw new Error('Completion token can only be generated when service is in progress');
+    }
+
+    // Generate a simple 6-digit numeric token for easy sharing
+    const token = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+    order.completionToken = token;
+    order.completionTokenExpiresAt = expiresAt;
+    await order.save();
+
+    res.json({
+      message: 'Token generated successfully',
+      token,
+      expiresAt
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Provider completes order using confirmatory token
+// @route   POST /api/orders/:id/complete
+// @access  Private
+exports.completeOrder = async (req, res, next) => {
+  try {
+    const { token } = req.body || {};
+
+    if (!canUseProviderFeatures(req.user.role)) {
+      res.status(403);
+      throw new Error('Only providers can complete orders');
+    }
+
+    if (!token) {
+      res.status(400);
+      throw new Error('Completion token is required');
+    }
+
+    const order = await Order.findByPk(req.params.id);
+    if (!order) {
+      res.status(404);
+      throw new Error('Order not found');
+    }
+
+    if (order.providerId !== req.user.id) {
+      res.status(403);
+      throw new Error('You are not authorized for this order');
+    }
+
+    if (order.status !== 'in_progress') {
+      res.status(400);
+      throw new Error('Only in progress orders can be completed');
+    }
+
+    if (!order.completionToken || order.completionToken !== token) {
+      res.status(400);
+      throw new Error('Invalid completion token');
+    }
+
+    if (new Date(order.completionTokenExpiresAt).getTime() < Date.now()) {
+      res.status(400);
+      throw new Error('The completion token has expired. Please ask the customer to generate a new one.');
+    }
+
+    order.status = 'completed';
+    // Clear token data
+    order.completionToken = null;
+    order.completionTokenExpiresAt = null;
+    await order.save();
+
+    const provider = await User.findByPk(req.user.id);
+    if (provider && provider.availabilityStatus === 'busy') {
+      provider.availabilityStatus = 'available';
+      await provider.save();
+    }
+
+    // Emit via WebSocket
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`order_${order.id}`).emit('orderStatusChanged', { status: 'completed', orderId: order.id });
+    }
+
+    res.json({
+      message: 'Order completed successfully'
     });
   } catch (error) {
     next(error);

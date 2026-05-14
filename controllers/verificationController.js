@@ -3,7 +3,7 @@ const { Order, Session, Verification, User } = require('../models');
 const { haversineDistanceKm } = require('../utils/location');
 
 const SESSION_TTL_MINUTES = 3;
-const MAX_ALLOWED_ACCURACY = 100;
+const MAX_ALLOWED_ACCURACY = 500;
 const MAX_ALLOWED_DISTANCE_METERS = 50;
 
 const toNumber = (value) => {
@@ -254,6 +254,12 @@ exports.verifySession = async (req, res, next) => {
     if (provider && provider.availabilityStatus !== 'busy') {
       provider.availabilityStatus = 'busy';
       await provider.save();
+    }
+
+    // Emit via WebSocket
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`order_${order.id}`).emit('orderStatusChanged', { status: 'in_progress', orderId: order.id });
     }
 
     res.json({
