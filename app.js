@@ -25,7 +25,13 @@ app.set('io', io);
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(morgan("dev"));
+
+const morganFormat = process.env.NODE_ENV === "production" ? "tiny" : "dev";
+app.use(
+  morgan(morganFormat, {
+    skip: (req) => req.url.startsWith("/socket.io/"),
+  }),
+);
 
 // Routes
 app.use("/api/auth", authRoutes);
