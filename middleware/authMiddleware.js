@@ -16,9 +16,18 @@ const protect = async (req, res, next) => {
         attributes: { exclude: ['password'] }
       });
 
+      if (!req.user) {
+        return res.status(401).json({ message: 'Not authorized, user not found' });
+      }
+
+      if ((req.user.accountStatus || 'active') === 'suspended') {
+        return res.status(403).json({
+          message: 'This account is suspended. Contact support or an administrator.'
+        });
+      }
+
       return next();
     } catch (error) {
-      console.error(error);
       return res.status(401).json({ message: 'Not authorized, token failed' });
     }
   }
@@ -28,4 +37,16 @@ const protect = async (req, res, next) => {
   }
 };
 
-module.exports = { protect };
+const adminOnly = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ message: 'Not authorized' });
+  }
+
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ message: 'Admin access required' });
+  }
+
+  next();
+};
+
+module.exports = { protect, adminOnly };

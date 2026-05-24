@@ -71,12 +71,29 @@ const User = sequelize.define('User', {
     type: DataTypes.INTEGER,
     defaultValue: 0
   },
+  hasPaidAccessFee: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
   availabilityStatus: {
     type: DataTypes.ENUM('available', 'busy', 'unavailable'),
     defaultValue: 'available'
   },
   profilePhoto: {
     type: DataTypes.STRING,
+    allowNull: true
+  },
+  accountStatus: {
+    type: DataTypes.ENUM('active', 'suspended'),
+    allowNull: false,
+    defaultValue: 'active'
+  },
+  suspensionReason: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  suspendedAt: {
+    type: DataTypes.DATE,
     allowNull: true
   },
   pushNotifications: {
@@ -90,14 +107,24 @@ const User = sequelize.define('User', {
   smsUpdates: {
     type: DataTypes.BOOLEAN,
     defaultValue: false
+  },
+  passwordResetTokenHash: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  passwordResetExpiresAt: {
+    type: DataTypes.DATE,
+    allowNull: true
   }
 }, {
   indexes: [
     { unique: true, fields: ['email'] },
     { fields: ['role'] },
+    { fields: ['accountStatus'] },
     { fields: ['availabilityStatus'] },
     { fields: ['latitude'] },
-    { fields: ['longitude'] }
+    { fields: ['longitude'] },
+    { fields: ['passwordResetTokenHash'] }
   ],
   hooks: {
     beforeCreate: async (user) => {

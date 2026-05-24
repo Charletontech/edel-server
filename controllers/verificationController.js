@@ -1,10 +1,9 @@
 const crypto = require('crypto');
 const { Order, Session, Verification, User } = require('../models');
 const { haversineDistanceKm } = require('../utils/location');
+const { getPlatformSettingValue } = require('../utils/platformSettings');
 
 const SESSION_TTL_MINUTES = 3;
-const MAX_ALLOWED_ACCURACY = 500;
-const MAX_ALLOWED_DISTANCE_METERS = 50;
 
 const toNumber = (value) => {
   const parsed = Number(value);
@@ -38,6 +37,9 @@ const getOrderWithRelations = (orderId) =>
 // @access  Private
 exports.startSession = async (req, res, next) => {
   try {
+    const maxAllowedAccuracy = Number(
+      await getPlatformSettingValue('verification_max_accuracy_meters')
+    ) || 100;
     const { orderId, lat, lng, accuracy } = req.body || {};
     const normalizedOrderId = Number(orderId);
     const normalizedLat = toNumber(lat);
@@ -70,7 +72,7 @@ exports.startSession = async (req, res, next) => {
       throw new Error('The order must be accepted before the service can start');
     }
 
-    if (normalizedAccuracy > MAX_ALLOWED_ACCURACY) {
+    if (normalizedAccuracy > maxAllowedAccuracy) {
       res.status(400);
       throw new Error('Location accuracy is too poor to create a verification session');
     }
@@ -121,6 +123,12 @@ exports.startSession = async (req, res, next) => {
 // @access  Private
 exports.verifySession = async (req, res, next) => {
   try {
+    const maxAllowedAccuracy = Number(
+      await getPlatformSettingValue('verification_max_accuracy_meters')
+    ) || 100;
+    const maxAllowedDistanceMeters = Number(
+      await getPlatformSettingValue('verification_max_distance_meters')
+    ) || 50;
     const {
       session_id,
       sessionId,
@@ -145,7 +153,7 @@ exports.verifySession = async (req, res, next) => {
       throw new Error('Valid provider location is required');
     }
 
-    if (normalizedProviderAccuracy > MAX_ALLOWED_ACCURACY) {
+    if (normalizedProviderAccuracy > maxAllowedAccuracy) {
       res.status(400);
       throw new Error('Location accuracy too poor to verify');
     }
@@ -209,7 +217,7 @@ exports.verifySession = async (req, res, next) => {
     }
 
     const customerAccuracy = toNumber(session.customerAccuracy);
-    if (customerAccuracy === null || customerAccuracy > MAX_ALLOWED_ACCURACY) {
+    if (customerAccuracy === null || customerAccuracy > maxAllowedAccuracy) {
       res.status(400);
       throw new Error('Location accuracy too poor to verify');
     }
@@ -226,7 +234,7 @@ exports.verifySession = async (req, res, next) => {
       throw new Error('Could not measure proximity');
     }
 
-    if (distanceMeters > MAX_ALLOWED_DISTANCE_METERS) {
+    if (distanceMeters > maxAllowedDistanceMeters) {
       res.status(400);
       throw new Error('You are not close enough to the customer. Move closer and try again.');
     }

@@ -1,4 +1,7 @@
-const { User, Service } = require('../models');
+const { User, Service, Order } = require('../models');
+const { Op } = require('sequelize');
+const path = require('path');
+const fs = require('fs');
 
 // @desc    Get user dashboard data
 // @route   GET /api/dashboard
@@ -19,6 +22,19 @@ exports.getDashboard = async (req, res, next) => {
       throw new Error('User not found');
     }
 
+    // Fetch reports related to this user
+    const reports = await Order.findAll({
+      where: {
+        [Op.or]: [
+          { customerId: user.id },
+          { providerId: user.id }
+        ],
+        reportMessage: { [Op.ne]: null }
+      },
+      order: [['reportedAt', 'DESC']],
+      limit: 10
+    });
+
     res.json({
       user: {
         id: user.id,
@@ -34,10 +50,21 @@ exports.getDashboard = async (req, res, next) => {
         jobsCompleted: user.jobsCompleted,
         availabilityStatus: user.availabilityStatus,
         services: user.services,
+        profilePhoto: user.profilePhoto,
         pushNotifications: user.pushNotifications,
         emailAlerts: user.emailAlerts,
         smsUpdates: user.smsUpdates
-      }
+      },
+      reports: reports.map(order => ({
+        id: order.id,
+        serviceTitle: order.serviceTitle,
+        reportMessage: order.reportMessage,
+        reportedAt: order.reportedAt,
+        reportStatus: order.reportStatus || 'open',
+        reportResolution: order.reportResolution,
+        adminNote: order.adminNote,
+        isReporter: order.customerId === user.id // For now we assume customer reports provider
+      }))
     });
   } catch (error) {
     next(error);
@@ -296,6 +323,50 @@ exports.updateLocation = async (req, res, next) => {
         latitude: user.latitude,
         longitude: user.longitude
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Update user profile photo
+// @route   PUT /api/profile/photo
+// @access  Private
+exports.updateProfilePhoto = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      res.status(400);
+      throw new Error('Please upload an image');
+    }
+
+    const user = await User.findByPk(req.user.id);
+    if (!user) {
+      res.status(404);
+      throw new Error('User not found');
+    }
+
+    const oldPhoto = user.profilePhoto;
+    const newPhotoPath = `/uploads/profiles/${req.file.filename}`;
+
+    // Update database
+    user.profilePhoto = newPhotoPath;
+    await user.save();
+
+    // Delete old photo if it's not the default one
+    if (oldPhoto && !oldPhoto.includes('avatar.webp')) {
+      const oldPath = path.join(__dirname, '..', oldPhoto);
+      fs.access(oldPath, fs.constants.F_OK, (err) => {
+        if (!err) {
+          fs.unlink(oldPath, (unlinkErr) => {
+            if (unlinkErr) console.error('Error deleting old photo:', unlinkErr);
+          });
+        }
+      });
+    }
+
+    res.json({
+      message: 'Profile photo updated successfully',
+      profilePhoto: user.profilePhoto
     });
   } catch (error) {
     next(error);

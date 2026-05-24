@@ -34,10 +34,24 @@ const Service = sequelize.define('Service', {
   isDefault: {
     type: DataTypes.BOOLEAN,
     defaultValue: false
+  },
+  serviceStatus: {
+    type: DataTypes.ENUM('active', 'disabled'),
+    allowNull: false,
+    defaultValue: 'active'
+  },
+  disabledReason: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  disabledAt: {
+    type: DataTypes.DATE,
+    allowNull: true
   }
 }, {
   indexes: [
     { fields: ['userId'] },
+    { fields: ['serviceStatus'] },
     { fields: ['category'] },
     { fields: ['title'] }
   ]

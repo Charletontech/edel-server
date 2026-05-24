@@ -3,35 +3,46 @@ const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
 const morgan = require("morgan");
-require("dotenv").config();
+require("dotenv").config({ path: require("path").join(__dirname, ".env") });
 const sequelize = require("./config/database");
 const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
 const serviceRoutes = require("./routes/serviceRoutes");
 const orderRoutes = require("./routes/orderRoutes");
+const adminRoutes = require("./routes/adminRoutes");
+const billingRoutes = require("./routes/billingRoutes");
 
 const app = express();
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
   cors: {
     origin: "*", // Adjust this in production
-    methods: ["GET", "POST"]
-  }
+    methods: ["GET", "POST"],
+  },
 });
 
-app.set('io', io);
+app.set("io", io);
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(morgan("dev"));
+app.use("/uploads", express.static("uploads"));
+
+const morganFormat = process.env.NODE_ENV === "production" ? "tiny" : "dev";
+app.use(
+  morgan(morganFormat, {
+    skip: (req) => req.url.startsWith("/socket.io/"),
+  }),
+);
 
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api", userRoutes);
 app.use("/api/services", serviceRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/billing", billingRoutes);
 
 app.get("/", (req, res) => {
   res.send("Edel API is running...");
@@ -62,24 +73,24 @@ const startServer = async () => {
     await sequelize.sync({ alter: true });
     console.log("Database synced successfully.");
 
-    const server = httpServer.listen(PORT, () => {
+    const server = httpServer.listen(PORT, "0.0.0.0", () => {
       console.log(
         `Server running in ${process.env.NODE_ENV || "development"} mode on port ${PORT}`,
       );
     });
-    
+
     // Socket.io connection handling
-    io.on('connection', (socket) => {
-      console.log('A user connected:', socket.id);
-      
+    io.on("connection", (socket) => {
+      console.log("A user connected:", socket.id);
+
       // Clients can join a room based on their userId or orderId to receive targeted updates
-      socket.on('joinRoom', (room) => {
+      socket.on("joinRoom", (room) => {
         socket.join(room);
         console.log(`Socket ${socket.id} joined room ${room}`);
       });
 
-      socket.on('disconnect', () => {
-        console.log('User disconnected:', socket.id);
+      socket.on("disconnect", () => {
+        console.log("User disconnected:", socket.id);
       });
     });
 

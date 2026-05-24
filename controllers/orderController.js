@@ -155,6 +155,11 @@ exports.createOrder = async (req, res, next) => {
       throw new Error('Service not found');
     }
 
+    if ((service.serviceStatus || 'active') !== 'active') {
+      res.status(400);
+      throw new Error('This service is currently unavailable');
+    }
+
     if (service.provider.id === customer.id) {
       res.status(400);
       throw new Error('You cannot order your own service');
@@ -264,11 +269,20 @@ exports.acceptOrder = async (req, res, next) => {
       throw new Error('Only pending orders can be accepted');
     }
 
+    const provider = await User.findByPk(req.user.id);
+    
+    // Enforce Access Fee
+    const { getPlatformSettingValue } = require('../utils/platformSettings');
+    const freeLimit = await getPlatformSettingValue('provider_free_order_limit') || 3;
+    if (provider.jobsCompleted >= freeLimit && !provider.hasPaidAccessFee) {
+      res.status(403);
+      throw new Error('Access Fee Required: You have reached the free order limit. Please pay the one-time access fee to continue accepting orders.');
+    }
+
     order.status = 'accepted';
     order.acceptedAt = new Date();
     await order.save();
 
-    const provider = await User.findByPk(req.user.id);
     if (provider) {
       provider.availabilityStatus = 'busy';
       await provider.save();
@@ -367,6 +381,12 @@ exports.cancelOrder = async (req, res, next) => {
       }
     }
 
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`order_${order.id}`).emit('orderStatusChanged', { status: 'cancelled', orderId: order.id });
+      io.to(`user_${order.providerId}`).emit('orderCancelled', { orderId: order.id });
+    }
+
     res.json({
       message: 'Order cancelled successfully'
     });
@@ -410,7 +430,18 @@ exports.reportOrder = async (req, res, next) => {
 
     order.reportMessage = message.trim();
     order.reportedAt = new Date();
+    order.reportStatus = 'open';
+    order.reportResolution = null;
+    order.adminNote = null;
+    order.reviewedByAdminId = null;
+    order.reviewedAt = null;
     await order.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`order_${order.id}`).emit('orderReported', { orderId: order.id });
+      io.to(`user_${order.providerId}`).emit('orderReported', { orderId: order.id });
+    }
 
     res.json({
       message: 'Report submitted successfully'
@@ -514,8 +545,32 @@ exports.completeOrder = async (req, res, next) => {
     await order.save();
 
     const provider = await User.findByPk(req.user.id);
-    if (provider && provider.availabilityStatus === 'busy') {
-      provider.availabilityStatus = 'available';
+    if (provider) {
+      provider.jobsCompleted = (provider.jobsCompleted || 0) + 1;
+      if (provider.availabilityStatus === 'busy') {
+        provider.availabilityStatus = 'available';
+      }
+      
+      // Task 10 & 11: Apply rating increment if no report
+      if (!order.reportMessage) {
+        const { getPlatformSettingValue } = require('../utils/platformSettings');
+        const increment = Number(await getPlatformSettingValue('provider_rating_increment')) || 5;
+        provider.rating = Math.min(100, (Number(provider.rating) || 50) + increment);
+      }
+
+      // Update tier logic
+      const jobs = provider.jobsCompleted;
+      const rating = Number(provider.rating);
+      if (jobs >= 100 && rating >= 95) {
+        provider.tier = 'platinum';
+      } else if (jobs >= 50 && rating >= 85) {
+        provider.tier = 'elite';
+      } else if (jobs >= 10 && rating >= 70) {
+        provider.tier = 'veteran';
+      } else {
+        provider.tier = 'rookie';
+      }
+      
       await provider.save();
     }
 
@@ -523,6 +578,7 @@ exports.completeOrder = async (req, res, next) => {
     const io = req.app.get('io');
     if (io) {
       io.to(`order_${order.id}`).emit('orderStatusChanged', { status: 'completed', orderId: order.id });
+      io.to(`user_${order.customerId}`).emit('orderCompleted', { orderId: order.id });
     }
 
     res.json({

@@ -93,6 +93,7 @@ exports.getDiscoveryFeed = async (req, res, next) => {
       role: {
         [Op.in]: ['provider', 'both']
       },
+      accountStatus: 'active',
       latitude: {
         [Op.ne]: null
       },
@@ -101,6 +102,7 @@ exports.getDiscoveryFeed = async (req, res, next) => {
       }
     };
     const serviceWhere = {};
+    serviceWhere.serviceStatus = 'active';
     const boundingBox = getBoundingBox(viewerLat, viewerLng, 50);
 
     if (boundingBox) {

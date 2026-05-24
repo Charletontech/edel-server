@@ -83,6 +83,26 @@ const Order = sequelize.define('Order', {
   reportedAt: {
     type: DataTypes.DATE,
     allowNull: true
+  },
+  reportStatus: {
+    type: DataTypes.ENUM('open', 'reviewed', 'resolved'),
+    allowNull: true
+  },
+  reportResolution: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  adminNote: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  reviewedByAdminId: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  reviewedAt: {
+    type: DataTypes.DATE,
+    allowNull: true
   }
 }, {
   indexes: [
@@ -90,6 +110,7 @@ const Order = sequelize.define('Order', {
     { fields: ['providerId'] },
     { fields: ['serviceId'] },
     { fields: ['status'] },
+    { fields: ['reportStatus'] },
     { fields: ['createdAt'] }
   ]
 });
