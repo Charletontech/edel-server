@@ -15,7 +15,8 @@ const {
   disableService,
   restoreService,
   getSettings,
-  updateSettings
+  updateSettings,
+  sendCustomEmail
 } = require('../controllers/adminController');
 const { protect, adminOnly } = require('../middleware/authMiddleware');
 
@@ -36,5 +37,6 @@ router.post('/services/:id/disable', disableService);
 router.post('/services/:id/restore', restoreService);
 router.get('/settings', getSettings);
 router.put('/settings', updateSettings);
+router.post('/emails/send', sendCustomEmail);
 
 module.exports = router;

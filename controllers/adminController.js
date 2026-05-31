@@ -13,6 +13,7 @@ const {
   SETTING_KEYS,
   ensurePlatformSettings
 } = require('../utils/platformSettings');
+const { sendCustomAdminEmail } = require('../utils/mailer');
 
 const ACTIVE_ORDER_STATUSES = ['pending', 'accepted', 'in_progress'];
 const REPORT_RESOLUTION_VALUES = new Set([
@@ -124,6 +125,11 @@ const logAdminAction = async (adminUserId, targetType, targetId, actionType, rea
     reason: reason || null,
     metadataJson: metadata ? JSON.stringify(metadata) : null
   });
+};
+
+const isValidEmailAddress = (value) => {
+  if (!value) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value).trim());
 };
 
 const getOrderIncludes = (includeFullHistory = false) => {
@@ -875,6 +881,53 @@ exports.updateSettings = async (req, res, next) => {
         updatedAt: record.updatedAt,
         updatedByAdmin: record.updatedByAdmin ? serializeUserSummary(record.updatedByAdmin) : null
       }))
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.sendCustomEmail = async (req, res, next) => {
+  try {
+    const to = (req.body.to || req.body.email || '').trim().toLowerCase();
+    const subject = (req.body.subject || '').trim();
+    const message = (req.body.message || '').trim();
+
+    if (!to) {
+      res.status(400);
+      throw new Error('Destination email is required');
+    }
+
+    if (!isValidEmailAddress(to)) {
+      res.status(400);
+      throw new Error('Destination email is invalid');
+    }
+
+    if (!subject) {
+      res.status(400);
+      throw new Error('Subject is required');
+    }
+
+    if (!message) {
+      res.status(400);
+      throw new Error('Message is required');
+    }
+
+    const result = await sendCustomAdminEmail({
+      to,
+      subject,
+      message
+    });
+
+    await logAdminAction(req.user.id, 'email', 0, 'send_custom_email', subject, {
+      to,
+      subject,
+      messageLength: message.length,
+      sendPulseMessageId: result?.message_id || result?.id || null
+    });
+
+    res.json({
+      message: 'Custom email sent successfully'
     });
   } catch (error) {
     next(error);

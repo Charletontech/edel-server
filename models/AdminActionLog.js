@@ -12,7 +12,7 @@ const AdminActionLog = sequelize.define('AdminActionLog', {
     allowNull: false
   },
   targetType: {
-    type: DataTypes.ENUM('user', 'service', 'order', 'setting'),
+    type: DataTypes.ENUM('user', 'service', 'order', 'setting', 'email'),
     allowNull: false
   },
   targetId: {

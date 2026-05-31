@@ -1,6 +1,7 @@
 const { User, Service } = require('../models');
 const generateToken = require('../utils/generateToken');
 const crypto = require('crypto');
+const { sendPasswordResetEmail } = require('../utils/mailer');
 
 const serializeUser = (user) => ({
   id: user.id,
@@ -203,8 +204,33 @@ exports.forgotPassword = async (req, res, next) => {
       const publicWebBaseUrl = process.env.PUBLIC_WEB_BASE_URL || 'http://localhost:5500';
       const resetUrl = `${publicWebBaseUrl.replace(/\/$/, '')}/change-password/?token=${encodeURIComponent(rawToken)}`;
 
-      // Email integration can hook into this resetUrl.
-      console.log(`[Password Reset] User ${user.id} reset link: ${resetUrl}`);
+      try {
+        await sendPasswordResetEmail({
+          to: user.email,
+          fullName: user.fullName,
+          resetUrl
+        });
+      } catch (mailError) {
+        console.error(`[Password Reset] Failed to send reset email for user ${user.id}:`, mailError.message);
+
+        user.passwordResetTokenHash = null;
+        user.passwordResetExpiresAt = null;
+        try {
+          await user.save();
+        } catch (cleanupError) {
+          console.error(
+            `[Password Reset] Failed to clear reset token after mail error for user ${user.id}:`,
+            cleanupError.message
+          );
+        }
+
+        res.status(500);
+        throw new Error('Unable to send password reset email right now. Please try again later.');
+      }
+
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Password Reset] User ${user.id} reset link: ${resetUrl}`);
+      }
 
       const response = {
         message: 'If this email exists, a password reset link has been generated.'

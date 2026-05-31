@@ -4,7 +4,7 @@ const { User } = require('../models');
 const sequelize = require('../config/database');
 
 const seedAdmin = async () => {
-  console.log('--- Edel Admin Seeder ---');
+  console.log('--- E-del Admin Seeder ---');
   try {
     // Test database connection
     await sequelize.authenticate();

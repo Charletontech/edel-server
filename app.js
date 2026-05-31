@@ -45,7 +45,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/billing", billingRoutes);
 
 app.get("/", (req, res) => {
-  res.send("Edel API is running...");
+  res.send("E-del API is running...");
 });
 
 // Global Error Handler
@@ -70,7 +70,7 @@ const startServer = async () => {
     await sequelize.authenticate();
     console.log("Database connection has been established successfully.");
 
-    await sequelize.sync({ alter: true });
+    await sequelize.sync({ alter: true }); //{ alter: true };
     console.log("Database synced successfully.");
 
     const server = httpServer.listen(PORT, "0.0.0.0", () => {
