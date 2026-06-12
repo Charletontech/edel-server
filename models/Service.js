@@ -31,6 +31,10 @@ const Service = sequelize.define('Service', {
     type: DataTypes.TEXT,
     allowNull: false
   },
+  businessPhoto: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
   isDefault: {
     type: DataTypes.BOOLEAN,
     defaultValue: false

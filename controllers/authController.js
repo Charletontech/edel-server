@@ -1,9 +1,9 @@
-const { User, Service } = require('../models');
+const { User } = require('../models');
 const generateToken = require('../utils/generateToken');
 const crypto = require('crypto');
-const { sendPasswordResetEmail } = require('../utils/mailer');
+const { sendPasswordResetEmail, sendEmailVerificationEmail } = require('../utils/mailer');
 
-const serializeUser = (user) => ({
+const serializeUser = (user, { includeToken = true } = {}) => ({
   id: user.id,
   fullName: user.fullName,
   email: user.email,
@@ -12,8 +12,10 @@ const serializeUser = (user) => ({
   latitude: user.latitude,
   longitude: user.longitude,
   role: user.role,
+  emailVerified: user.emailVerified,
   rating: user.rating,
   tier: user.tier,
+  hasPaidAccessFee: user.hasPaidAccessFee,
   jobsCompleted: user.jobsCompleted,
   availabilityStatus: user.availabilityStatus,
   serviceCategory: user.serviceCategory,
@@ -22,8 +24,38 @@ const serializeUser = (user) => ({
   serviceDescription: user.serviceDescription,
   profilePhoto: user.profilePhoto,
   accountStatus: user.accountStatus,
-  token: generateToken(user.id)
+  token: includeToken ? generateToken(user.id) : undefined
 });
+
+const buildVerificationToken = () => {
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24); // 24 hours
+
+  return { rawToken, tokenHash, expiresAt };
+};
+
+const issueVerificationEmail = async (user) => {
+  const { rawToken, tokenHash, expiresAt } = buildVerificationToken();
+  user.emailVerificationTokenHash = tokenHash;
+  user.emailVerificationExpiresAt = expiresAt;
+  await user.save();
+
+  const publicWebBaseUrl = process.env.PUBLIC_WEB_BASE_URL || 'http://localhost:5500';
+  const verifyUrl = `${publicWebBaseUrl.replace(/\/$/, '')}/auth/?verify=${encodeURIComponent(rawToken)}`;
+
+  await sendEmailVerificationEmail({
+    to: user.email,
+    fullName: user.fullName,
+    verifyUrl
+  });
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`[Email Verification] User ${user.id} verification link: ${verifyUrl}`);
+  }
+
+  return verifyUrl;
+};
 
 // @desc    Register a new user
 // @route   POST /api/auth/signup
@@ -38,11 +70,7 @@ exports.registerUser = async (req, res, next) => {
       locationLabel,
       latitude,
       longitude,
-      role,
-      serviceCategory,
-      serviceTitle,
-      basePrice,
-      serviceDescription
+      role
     } = req.body || {};
 
     // Handle file upload
@@ -53,11 +81,6 @@ exports.registerUser = async (req, res, next) => {
 
     const normalizedRole = role || 'customer';
     const normalizedEmail = email ? email.trim().toLowerCase() : '';
-    const normalizedCategory = serviceCategory ? serviceCategory.trim() : null;
-    const normalizedTitle = serviceTitle ? serviceTitle.trim() : null;
-    const normalizedDescription = serviceDescription
-      ? serviceDescription.trim()
-      : null;
     const normalizedLocationLabel = locationLabel ? locationLabel.trim() : null;
     const normalizedLatitude =
       latitude === '' || latitude === null || typeof latitude === 'undefined'
@@ -67,11 +90,6 @@ exports.registerUser = async (req, res, next) => {
       longitude === '' || longitude === null || typeof longitude === 'undefined'
         ? null
         : Number(longitude);
-    const normalizedBasePrice =
-      basePrice === '' || basePrice === null || typeof basePrice === 'undefined'
-        ? null
-        : Number(basePrice);
-
     if (!normalizedLocationLabel) {
       res.status(400);
       throw new Error('Location name is required');
@@ -89,22 +107,18 @@ exports.registerUser = async (req, res, next) => {
       throw new Error('Location coordinates must be valid when provided');
     }
 
-    if (normalizedRole === 'provider') {
-      if (
-        !normalizedCategory ||
-        !normalizedTitle ||
-        normalizedBasePrice === null ||
-        Number.isNaN(normalizedBasePrice) ||
-        !normalizedDescription
-      ) {
-        res.status(400);
-        throw new Error('Provider accounts require category, service title, base price, and description');
-      }
-    }
-
     const userExists = await User.findOne({ where: { email: normalizedEmail } });
 
     if (userExists) {
+      if (!userExists.emailVerified) {
+        await issueVerificationEmail(userExists);
+        return res.status(200).json({
+          message: 'This account is waiting for email verification. We have sent a new verification link.',
+          email: userExists.email,
+          requiresVerification: true
+        });
+      }
+
       if (process.env.NODE_ENV !== 'production') {
         console.warn('[Auth Debug] Duplicate signup blocked for email:', normalizedEmail, 'matched user id:', userExists.id);
       }
@@ -121,27 +135,18 @@ exports.registerUser = async (req, res, next) => {
       latitude: normalizedLatitude,
       longitude: normalizedLongitude,
       role: normalizedRole,
+      emailVerified: false,
       profilePhoto: profilePhotoPath,
-      serviceCategory: normalizedRole === 'provider' ? normalizedCategory : null,
-      serviceTitle: normalizedRole === 'provider' ? normalizedTitle : null,
-      basePrice: normalizedRole === 'provider' ? normalizedBasePrice : null,
-      serviceDescription:
-        normalizedRole === 'provider' ? normalizedDescription : null
     });
 
     if (user) {
-      // Create initial service for provider
-      if (normalizedRole === 'provider') {
-        await Service.create({
-          userId: user.id,
-          category: normalizedCategory,
-          title: normalizedTitle,
-          basePrice: normalizedBasePrice,
-          description: normalizedDescription,
-          isDefault: true
-        });
-      }
-      res.status(201).json(serializeUser(user));
+      await issueVerificationEmail(user);
+
+      res.status(201).json({
+        message: 'Your account has been created. Please verify your email before signing in.',
+        email: user.email,
+        requiresVerification: true
+      });
     } else {
       res.status(400);
       throw new Error('Invalid user data');
@@ -165,6 +170,16 @@ exports.loginUser = async (req, res, next) => {
       if ((user.accountStatus || 'active') === 'suspended') {
         res.status(403);
         throw new Error('This account is suspended. Contact support or an administrator.');
+      }
+
+      if (user.emailVerified === false) {
+        res.status(403);
+        return res.json({
+          message: 'Email verification required before signing in.',
+          code: 'EMAIL_NOT_VERIFIED',
+          email: user.email,
+          requiresVerification: true
+        });
       }
 
       res.json(serializeUser(user));
@@ -243,6 +258,82 @@ exports.forgotPassword = async (req, res, next) => {
 
     return res.json({
       message: 'If this email exists, a password reset link has been generated.'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Verify email address
+// @route   POST /api/auth/verify-email
+// @access  Public
+exports.verifyEmail = async (req, res, next) => {
+  try {
+    const { token } = req.body || {};
+
+    if (!token || !String(token).trim()) {
+      res.status(400);
+      throw new Error('Verification token is required');
+    }
+
+    const tokenHash = crypto.createHash('sha256').update(String(token).trim()).digest('hex');
+
+    const user = await User.findOne({
+      where: {
+        emailVerificationTokenHash: tokenHash
+      }
+    });
+
+    if (!user || !user.emailVerificationExpiresAt || user.emailVerificationExpiresAt.getTime() < Date.now()) {
+      res.status(400);
+      throw new Error('Verification token is invalid or has expired');
+    }
+
+    user.emailVerified = true;
+    user.emailVerifiedAt = new Date();
+    user.emailVerificationTokenHash = null;
+    user.emailVerificationExpiresAt = null;
+    await user.save();
+
+    res.json({
+      message: 'Email verified successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Resend email verification
+// @route   POST /api/auth/resend-verification
+// @access  Public
+exports.resendVerificationEmail = async (req, res, next) => {
+  try {
+    const { email } = req.body || {};
+    const normalizedEmail = email ? email.trim().toLowerCase() : '';
+
+    if (!normalizedEmail) {
+      res.status(400);
+      throw new Error('Email is required');
+    }
+
+    const user = await User.findOne({ where: { email: normalizedEmail } });
+
+    if (!user) {
+      return res.json({
+        message: 'If an account exists for that email, a verification link will be sent.'
+      });
+    }
+
+    if (user.emailVerified) {
+      return res.json({
+        message: 'This account is already verified. You can sign in now.'
+      });
+    }
+
+    await issueVerificationEmail(user);
+
+    return res.json({
+      message: 'Verification link sent. Check your inbox and spam folder.'
     });
   } catch (error) {
     next(error);

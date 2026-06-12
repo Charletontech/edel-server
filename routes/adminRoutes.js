@@ -16,7 +16,11 @@ const {
   restoreService,
   getSettings,
   updateSettings,
-  sendCustomEmail
+  sendCustomEmail,
+  getAdminCategories,
+  createCategory,
+  updateCategory,
+  deleteCategory
 } = require('../controllers/adminController');
 const { protect, adminOnly } = require('../middleware/authMiddleware');
 
@@ -38,5 +42,11 @@ router.post('/services/:id/restore', restoreService);
 router.get('/settings', getSettings);
 router.put('/settings', updateSettings);
 router.post('/emails/send', sendCustomEmail);
+
+// Category Management
+router.get('/categories', getAdminCategories);
+router.post('/categories', createCategory);
+router.put('/categories/:id', updateCategory);
+router.delete('/categories/:id', deleteCategory);
 
 module.exports = router;

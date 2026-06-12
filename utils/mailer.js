@@ -286,6 +286,53 @@ const sendPasswordResetEmail = async ({ to, fullName, resetUrl }) => {
   });
 };
 
+const sendEmailVerificationEmail = async ({ to, fullName, verifyUrl }) => {
+  if (!to) {
+    throw new Error('Recipient email is required.');
+  }
+
+  if (!verifyUrl) {
+    throw new Error('Verification URL is required.');
+  }
+
+  const displayName = fullName || 'there';
+  const subject = 'Verify your E-del email';
+  const text = [
+    `Hello ${displayName},`,
+    '',
+    'Welcome to E-del. Please verify your email address to activate your account.',
+    `Use this link to verify your email: ${verifyUrl}`,
+    '',
+    'If you did not create this account, you can ignore this email.'
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const body = [
+    `Hello ${displayName},`,
+    'Welcome to E-del. Please verify your email address to activate your account.',
+    'Use the button below to finish setting up your account.',
+    'If the link does not open correctly, you can request a new verification email from the sign-in page.',
+    'If you did not create this account, you can safely ignore this email.'
+  ];
+
+  const html = buildEmailShell({
+    preheader: 'Verify your E-del email address to activate your account.',
+    headline: 'Verify your email',
+    body,
+    ctaLabel: 'Verify Email',
+    ctaUrl: verifyUrl,
+    footerNote: 'This message was sent automatically by E-del. Please do not reply to this inbox.'
+  });
+
+  return sendSendpulseEmail({
+    to,
+    subject,
+    text,
+    html
+  });
+};
+
 const sendCustomAdminEmail = async ({ to, subject, message }) => {
   if (!to) {
     throw new Error('Recipient email is required.');
@@ -317,6 +364,7 @@ const sendCustomAdminEmail = async ({ to, subject, message }) => {
 
 module.exports = {
   sendPasswordResetEmail,
+  sendEmailVerificationEmail,
   sendCustomAdminEmail,
   sendSendpulseEmail
 };

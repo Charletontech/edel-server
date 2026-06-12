@@ -24,10 +24,6 @@ const PlatformSetting = sequelize.define('PlatformSetting', {
     type: DataTypes.INTEGER,
     allowNull: true
   }
-}, {
-  indexes: [
-    { unique: true, fields: ['key'] }
-  ]
 });
 
 module.exports = PlatformSetting;

@@ -1,6 +1,9 @@
 const { Op } = require('sequelize');
-const { Service, User } = require('../models');
+const { Service, User, Category } = require('../models');
 const { getBoundingBox, haversineDistanceKm } = require('../utils/location');
+const { canUseProviderFeatures } = require('../utils/sessionRole');
+const path = require('path');
+const fs = require('fs');
 
 const normalizeDiscoveryRole = (role) => {
   if (role === 'provider' || role === 'both') return 'provider';
@@ -21,6 +24,7 @@ const buildDiscoveryItem = (service, viewerLat, viewerLng) => {
     category: service.category,
     title: service.title,
     description: service.description,
+    businessPhoto: service.businessPhoto || '/assets/images/business-photo-default.jpg',
     basePrice: Number(service.basePrice),
     isDefault: service.isDefault,
     distanceKm,
@@ -30,12 +34,29 @@ const buildDiscoveryItem = (service, viewerLat, viewerLng) => {
       profilePhoto: provider.profilePhoto,
       rating: Number(provider.rating || 50),
       tier: provider.tier,
+      hasPaidAccessFee: Boolean(provider.hasPaidAccessFee),
       availabilityStatus: provider.availabilityStatus,
       locationLabel: provider.locationLabel,
       latitude: Number(provider.latitude),
       longitude: Number(provider.longitude)
     }
   };
+};
+
+// @desc    Get all active categories
+// @route   GET /api/services/categories
+// @access  Private
+exports.getCategories = async (req, res, next) => {
+  try {
+    const categories = await Category.findAll({
+      where: { isActive: true },
+      attributes: ['id', 'name', 'iconName'],
+      order: [['name', 'ASC']]
+    });
+    res.json(categories);
+  } catch (error) {
+    next(error);
+  }
 };
 
 // @desc    Get discovery feed
@@ -58,7 +79,9 @@ exports.getDiscoveryFeed = async (req, res, next) => {
       throw new Error('User not found');
     }
 
-    const requestedRole = normalizeDiscoveryRole(req.query.role || currentUser.role);
+    const requestedRole = normalizeDiscoveryRole(
+      req.query.role || req.sessionRole || (currentUser.role === 'admin' ? 'customer' : currentUser.role)
+    );
     const search = (req.query.search || '').trim();
     const category = (req.query.category || '').trim();
     const limit = Math.min(Math.max(Number(req.query.limit) || 24, 1), 48);
@@ -140,6 +163,7 @@ exports.getDiscoveryFeed = async (req, res, next) => {
             'profilePhoto',
             'rating',
             'tier',
+            'hasPaidAccessFee',
             'availabilityStatus',
             'locationLabel',
             'latitude',
@@ -156,10 +180,10 @@ exports.getDiscoveryFeed = async (req, res, next) => {
       .sort((a, b) => a.distanceKm - b.distanceKm)
       .slice(0, limit);
 
-    const categories = await Service.findAll({
-      attributes: ['category'],
-      group: ['category'],
-      order: [['category', 'ASC']]
+    const categories = await Category.findAll({
+      where: { isActive: true },
+      attributes: ['name', 'iconName'],
+      order: [['name', 'ASC']]
     });
 
     res.json({
@@ -170,7 +194,7 @@ exports.getDiscoveryFeed = async (req, res, next) => {
         longitude: viewerLng
       },
       services: filteredItems,
-      categories: categories.map((entry) => entry.category),
+      categories: categories.map(c => ({ name: c.name, iconName: c.iconName })),
       meta: {
         total: filteredItems.length,
         search,
@@ -189,9 +213,14 @@ exports.addService = async (req, res, next) => {
   try {
     const { category, title, basePrice, description } = req.body;
 
-    if (!['provider', 'both'].includes(req.user.role)) {
+    if (!canUseProviderFeatures(req.user, req.sessionRole)) {
       res.status(403);
       throw new Error('Only providers can add services');
+    }
+
+    if (!req.file) {
+      res.status(400);
+      throw new Error('A business photo is required to create a service');
     }
 
     const serviceCount = await Service.count({ where: { userId: req.user.id } });
@@ -200,12 +229,15 @@ exports.addService = async (req, res, next) => {
       throw new Error('Maximum of 5 services allowed');
     }
 
+    const businessPhoto = `/uploads/business-photos/${req.file.filename}`;
+
     const service = await Service.create({
       userId: req.user.id,
       category,
       title,
       basePrice,
-      description
+      description,
+      businessPhoto
     });
 
     res.status(201).json(service);
@@ -230,6 +262,23 @@ exports.updateService = async (req, res, next) => {
     if (service.userId !== req.user.id) {
       res.status(403);
       throw new Error('Unauthorized access to service');
+    }
+
+    if (req.file) {
+      const oldPhoto = service.businessPhoto;
+      service.businessPhoto = `/uploads/business-photos/${req.file.filename}`;
+
+      // Delete old photo if it exists
+      if (oldPhoto) {
+        const oldPath = path.join(__dirname, '..', oldPhoto);
+        fs.access(oldPath, fs.constants.F_OK, (err) => {
+          if (!err) {
+            fs.unlink(oldPath, (unlinkErr) => {
+              if (unlinkErr) console.error('Error deleting old business photo:', unlinkErr);
+            });
+          }
+        });
+      }
     }
 
     service.category = category || service.category;
@@ -262,7 +311,21 @@ exports.deleteService = async (req, res, next) => {
       throw new Error('Unauthorized access to service');
     }
 
+    const photoPath = service.businessPhoto;
+
     await service.destroy();
+
+    // Delete photo from disk
+    if (photoPath) {
+      const fullPath = path.join(__dirname, '..', photoPath);
+      fs.access(fullPath, fs.constants.F_OK, (err) => {
+        if (!err) {
+          fs.unlink(fullPath, (unlinkErr) => {
+            if (unlinkErr) console.error('Error deleting business photo on service removal:', unlinkErr);
+          });
+        }
+      });
+    }
 
     res.json({ message: 'Service removed' });
   } catch (error) {

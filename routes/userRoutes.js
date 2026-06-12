@@ -15,7 +15,7 @@ const { protect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
 
 router.get('/dashboard', protect, getDashboard);
-router.post('/upgrade', protect, upgradeAccount);
+router.post('/upgrade', protect, upload.single('businessPhoto'), upgradeAccount);
 router.put('/location', protect, updateLocation);
 router.put('/status', protect, updateStatus);
 router.put('/profile', protect, updateProfile);

@@ -1,12 +1,13 @@
 const { Op } = require('sequelize');
 const { Order, Service, User } = require('../models');
 const { haversineDistanceKm } = require('../utils/location');
+const {
+  canUseCustomerFeatures,
+  canUseProviderFeatures
+} = require('../utils/sessionRole');
 const crypto = require('crypto');
 
 const OPEN_STATUSES = ['pending', 'accepted', 'in_progress'];
-
-const canUseCustomerFeatures = (role) => ['customer', 'both'].includes(role);
-const canUseProviderFeatures = (role) => ['provider', 'both'].includes(role);
 
 const serializeOrder = (order) => {
   if (!order) return null;
@@ -124,7 +125,7 @@ exports.createOrder = async (req, res, next) => {
       throw new Error('A service must be selected before placing an order');
     }
 
-    if (!canUseCustomerFeatures(req.user.role)) {
+    if (!canUseCustomerFeatures(req.user, req.sessionRole)) {
       res.status(403);
       throw new Error('Only customers can place orders');
     }
@@ -230,8 +231,8 @@ exports.createOrder = async (req, res, next) => {
 exports.getActivityOrders = async (req, res, next) => {
   try {
     const [customerOrder, providerOrder] = await Promise.all([
-      canUseCustomerFeatures(req.user.role) ? getOpenOrderForCustomer(req.user.id) : Promise.resolve(null),
-      canUseProviderFeatures(req.user.role) ? getOpenOrderForProvider(req.user.id) : Promise.resolve(null)
+      canUseCustomerFeatures(req.user, req.sessionRole) ? getOpenOrderForCustomer(req.user.id) : Promise.resolve(null),
+      canUseProviderFeatures(req.user, req.sessionRole) ? getOpenOrderForProvider(req.user.id) : Promise.resolve(null)
     ]);
 
     res.json({
@@ -248,7 +249,7 @@ exports.getActivityOrders = async (req, res, next) => {
 // @access  Private
 exports.acceptOrder = async (req, res, next) => {
   try {
-    if (!canUseProviderFeatures(req.user.role)) {
+    if (!canUseProviderFeatures(req.user, req.sessionRole)) {
       res.status(403);
       throw new Error('Only providers can accept orders');
     }
@@ -306,7 +307,7 @@ exports.acceptOrder = async (req, res, next) => {
 // @access  Private
 exports.declineOrder = async (req, res, next) => {
   try {
-    if (!canUseProviderFeatures(req.user.role)) {
+    if (!canUseProviderFeatures(req.user, req.sessionRole)) {
       res.status(403);
       throw new Error('Only providers can decline orders');
     }
@@ -346,7 +347,7 @@ exports.cancelOrder = async (req, res, next) => {
   try {
     const { reason } = req.body || {};
 
-    if (!canUseCustomerFeatures(req.user.role)) {
+    if (!canUseCustomerFeatures(req.user, req.sessionRole)) {
       res.status(403);
       throw new Error('Only customers can cancel orders');
     }
@@ -402,7 +403,7 @@ exports.reportOrder = async (req, res, next) => {
   try {
     const { message } = req.body || {};
 
-    if (!canUseCustomerFeatures(req.user.role)) {
+    if (!canUseCustomerFeatures(req.user, req.sessionRole)) {
       res.status(403);
       throw new Error('Only customers can report an order');
     }
@@ -456,7 +457,7 @@ exports.reportOrder = async (req, res, next) => {
 // @access  Private
 exports.generateCompletionToken = async (req, res, next) => {
   try {
-    if (!canUseCustomerFeatures(req.user.role)) {
+    if (!canUseCustomerFeatures(req.user, req.sessionRole)) {
       res.status(403);
       throw new Error('Only customers can generate a completion token');
     }
@@ -502,7 +503,7 @@ exports.completeOrder = async (req, res, next) => {
   try {
     const { token } = req.body || {};
 
-    if (!canUseProviderFeatures(req.user.role)) {
+    if (!canUseProviderFeatures(req.user, req.sessionRole)) {
       res.status(403);
       throw new Error('Only providers can complete orders');
     }

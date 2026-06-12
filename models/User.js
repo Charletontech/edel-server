@@ -43,6 +43,23 @@ const User = sequelize.define('User', {
     type: DataTypes.ENUM('customer', 'provider', 'both', 'admin'),
     defaultValue: 'customer'
   },
+  emailVerified: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: true
+  },
+  emailVerifiedAt: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  emailVerificationTokenHash: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  emailVerificationExpiresAt: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
   serviceCategory: {
     type: DataTypes.STRING,
     allowNull: true

@@ -45,8 +45,10 @@ exports.getDashboard = async (req, res, next) => {
         latitude: user.latitude,
         longitude: user.longitude,
         role: user.role,
+        emailVerified: user.emailVerified,
         rating: user.rating,
         tier: user.tier,
+        hasPaidAccessFee: user.hasPaidAccessFee,
         jobsCompleted: user.jobsCompleted,
         availabilityStatus: user.availabilityStatus,
         services: user.services,
@@ -101,10 +103,17 @@ exports.upgradeAccount = async (req, res, next) => {
         throw new Error('Provider accounts require category, service title, base price, and description');
       }
 
+      if (!req.file) {
+        res.status(400);
+        throw new Error('A business photo is required to create a provider account');
+      }
+
       user.serviceCategory = serviceCategory.trim();
       user.serviceTitle = serviceTitle.trim();
       user.basePrice = normalizedBasePrice;
       user.serviceDescription = serviceDescription.trim();
+
+      const businessPhoto = `/uploads/business-photos/${req.file.filename}`;
 
       // Create initial service for the new provider
       await Service.create({
@@ -113,6 +122,7 @@ exports.upgradeAccount = async (req, res, next) => {
         title: user.serviceTitle,
         basePrice: user.basePrice,
         description: user.serviceDescription,
+        businessPhoto,
         isDefault: true
       });
     }

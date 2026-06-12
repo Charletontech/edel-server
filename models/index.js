@@ -6,6 +6,7 @@ const Verification = require('./Verification');
 const PlatformSetting = require('./PlatformSetting');
 const AdminActionLog = require('./AdminActionLog');
 const Transaction = require('./Transaction');
+const Category = require('./Category');
 
 // Associations
 User.hasMany(Service, { foreignKey: 'userId', as: 'services' });
@@ -43,5 +44,6 @@ module.exports = {
   Verification,
   PlatformSetting,
   AdminActionLog,
-  Transaction
+  Transaction,
+  Category
 };

@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { getSessionRole } = require('../utils/sessionRole');
 
 const protect = async (req, res, next) => {
   let token;
@@ -23,6 +24,23 @@ const protect = async (req, res, next) => {
       if ((req.user.accountStatus || 'active') === 'suspended') {
         return res.status(403).json({
           message: 'This account is suspended. Contact support or an administrator.'
+        });
+      }
+
+      if (req.user.emailVerified === false) {
+        return res.status(403).json({
+          message: 'Email verification required before accessing the app.',
+          code: 'EMAIL_NOT_VERIFIED',
+          requiresVerification: true,
+          email: req.user.email
+        });
+      }
+
+      req.sessionRole = getSessionRole(req.user, req.headers['x-edel-session-role']);
+
+      if (req.user.role === 'both' && !req.sessionRole) {
+        return res.status(403).json({
+          message: 'Please choose an account type to continue.'
         });
       }
 

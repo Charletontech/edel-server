@@ -6,8 +6,80 @@ const {
   Session,
   Verification,
   PlatformSetting,
-  AdminActionLog
+  AdminActionLog,
+  Category
 } = require('../models');
+
+// --- Category Management ---
+
+exports.getAdminCategories = async (req, res, next) => {
+  try {
+    const categories = await Category.findAll({
+      order: [['name', 'ASC']]
+    });
+    res.json(categories);
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.createCategory = async (req, res, next) => {
+  try {
+    const { name, iconName, isActive } = req.body;
+    
+    if (!name || !iconName) {
+      res.status(400);
+      throw new Error('Name and Icon Name are required');
+    }
+
+    const category = await Category.create({
+      name: name.toLowerCase(),
+      iconName,
+      isActive: isActive !== undefined ? isActive : true
+    });
+
+    res.status(201).json(category);
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.updateCategory = async (req, res, next) => {
+  try {
+    const { name, iconName, isActive } = req.body;
+    const category = await Category.findByPk(req.params.id);
+
+    if (!category) {
+      res.status(404);
+      throw new Error('Category not found');
+    }
+
+    if (name) category.name = name.toLowerCase();
+    if (iconName) category.iconName = iconName;
+    if (isActive !== undefined) category.isActive = isActive;
+
+    await category.save();
+    res.json(category);
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.deleteCategory = async (req, res, next) => {
+  try {
+    const category = await Category.findByPk(req.params.id);
+
+    if (!category) {
+      res.status(404);
+      throw new Error('Category not found');
+    }
+
+    await category.destroy();
+    res.json({ message: 'Category removed' });
+  } catch (error) {
+    next(error);
+  }
+};
 const {
   SETTING_DEFINITIONS,
   SETTING_KEYS,

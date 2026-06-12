@@ -51,7 +51,6 @@ const Session = sequelize.define('Session', {
   }
 }, {
   indexes: [
-    { unique: true, fields: ['sessionId'] },
     { fields: ['orderId'] },
     { fields: ['customerId'] },
     { fields: ['status'] },
