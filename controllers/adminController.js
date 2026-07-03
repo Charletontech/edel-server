@@ -109,7 +109,9 @@ const serializeUserSummary = (user) => ({
   locationLabel: user.locationLabel,
   jobsCompleted: user.jobsCompleted,
   createdAt: user.createdAt,
-  profilePhoto: user.profilePhoto
+  profilePhoto: user.profilePhoto,
+  faceVerified: user.faceVerified || false,
+  facePhoto: user.facePhoto || null
 });
 
 const serializeServiceSummary = (service) => ({

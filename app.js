@@ -70,7 +70,21 @@ const startServer = async () => {
     await sequelize.authenticate();
     console.log("Database connection has been established successfully.");
 
-    await sequelize.sync({ alter: true });
+    try {
+      await sequelize.query(
+        "UPDATE Users SET availabilityStatus = 'away' WHERE availabilityStatus = 'unavailable';",
+      );
+      console.log(
+        "Pre-sync migration: converted 'unavailable' availability status to 'away'.",
+      );
+    } catch (err) {
+      console.log(
+        "Pre-sync migration notice (non-critical if table does not exist):",
+        err.message,
+      );
+    }
+
+    await sequelize.sync({ alter: true }); // { alter: true }
     console.log("Database synced successfully.");
 
     const server = httpServer.listen(PORT, "0.0.0.0", () => {

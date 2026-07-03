@@ -93,7 +93,7 @@ const User = sequelize.define('User', {
     defaultValue: false
   },
   availabilityStatus: {
-    type: DataTypes.ENUM('available', 'busy', 'unavailable'),
+    type: DataTypes.ENUM('available', 'busy', 'away'),
     defaultValue: 'available'
   },
   profilePhoto: {

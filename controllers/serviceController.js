@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const { Service, User, Category } = require('../models');
 const { getBoundingBox, haversineDistanceKm } = require('../utils/location');
 const { canUseProviderFeatures } = require('../utils/sessionRole');
+const { getPlatformSettingValue } = require('../utils/platformSettings');
 const path = require('path');
 const fs = require('fs');
 
@@ -79,6 +80,8 @@ exports.getDiscoveryFeed = async (req, res, next) => {
       throw new Error('User not found');
     }
 
+    const enableCategoriesViewForProviders = (await getPlatformSettingValue('enable_categories_view_for_providers')) === 1;
+
     const requestedRole = normalizeDiscoveryRole(
       req.query.role || req.sessionRole || (currentUser.role === 'admin' ? 'customer' : currentUser.role)
     );
@@ -97,7 +100,8 @@ exports.getDiscoveryFeed = async (req, res, next) => {
         requests: [],
         meta: {
           message: 'Customer request discovery will become active with the order flow.'
-        }
+        },
+        enableCategoriesViewForProviders
       });
     }
 
@@ -199,7 +203,8 @@ exports.getDiscoveryFeed = async (req, res, next) => {
         total: filteredItems.length,
         search,
         category: category || 'all'
-      }
+      },
+      enableCategoriesViewForProviders
     });
   } catch (error) {
     next(error);

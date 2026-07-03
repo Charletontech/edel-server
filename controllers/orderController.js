@@ -141,6 +141,11 @@ exports.createOrder = async (req, res, next) => {
       throw new Error('Your location is required before you can place an order');
     }
 
+    if (!customer.faceVerified) {
+      res.status(403);
+      throw new Error('Face Verification Required: You must complete face verification before placing an order.');
+    }
+
     const service = await Service.findByPk(serviceId, {
       include: [
         {
@@ -271,8 +276,13 @@ exports.acceptOrder = async (req, res, next) => {
     }
 
     const provider = await User.findByPk(req.user.id);
-    
-    // Enforce Access Fee
+
+    // Enforce face verification
+    if (!provider.faceVerified) {
+      res.status(403);
+      throw new Error('Face Verification Required: You must complete face verification before accepting orders.');
+    }
+
     const { getPlatformSettingValue } = require('../utils/platformSettings');
     const freeLimit = await getPlatformSettingValue('provider_free_order_limit') || 3;
     if (provider.jobsCompleted >= freeLimit && !provider.hasPaidAccessFee) {

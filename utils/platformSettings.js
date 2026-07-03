@@ -35,6 +35,11 @@ const SETTING_DEFINITIONS = [
     key: 'verification_max_accuracy_meters',
     value: 100,
     description: 'Maximum GPS accuracy allowed during QR verification'
+  },
+  {
+    key: 'enable_categories_view_for_providers',
+    value: 0,
+    description: 'Group services into categories for providers (1 = Yes, 0 = No)'
   }
 ];
 

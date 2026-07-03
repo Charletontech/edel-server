@@ -5,8 +5,9 @@ const fs = require('fs');
 // Ensure uploads directories exist
 const profileDir = path.join(__dirname, '../uploads/profiles');
 const businessDir = path.join(__dirname, '../uploads/business-photos');
+const facesDir = path.join(__dirname, '../uploads/faces');
 
-[profileDir, businessDir].forEach(dir => {
+[profileDir, businessDir, facesDir].forEach(dir => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -16,6 +17,8 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     if (file.fieldname === 'businessPhoto') {
       cb(null, businessDir);
+    } else if (file.fieldname === 'facePhoto') {
+      cb(null, facesDir);
     } else {
       cb(null, profileDir);
     }

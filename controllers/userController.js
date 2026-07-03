@@ -274,9 +274,9 @@ exports.updateStatus = async (req, res, next) => {
   try {
     const { status } = req.body || {};
 
-    if (!['available', 'busy', 'unavailable'].includes(status)) {
+    if (!['available', 'away'].includes(status)) {
       res.status(400);
-      throw new Error('Invalid status. Must be available, busy, or unavailable');
+      throw new Error('Invalid status. Must be available or away');
     }
 
     const user = await User.findByPk(req.user.id);

@@ -23,6 +23,8 @@ const serializeUser = (user, { includeToken = true } = {}) => ({
   basePrice: user.basePrice,
   serviceDescription: user.serviceDescription,
   profilePhoto: user.profilePhoto,
+  facePhoto: user.facePhoto,
+  faceVerified: user.faceVerified,
   accountStatus: user.accountStatus,
   token: includeToken ? generateToken(user.id) : undefined
 });
@@ -377,6 +379,43 @@ exports.resetPassword = async (req, res, next) => {
 
     res.json({
       message: 'Password has been reset successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+// @desc    Upload face photo for verification
+// @route   POST /api/auth/upload-face
+// @access  Public (user identified by email in body)
+exports.uploadFacePhoto = async (req, res, next) => {
+  try {
+    const { email } = req.body || {};
+    const normalizedEmail = email ? email.trim().toLowerCase() : '';
+
+    if (!normalizedEmail) {
+      res.status(400);
+      throw new Error('Email is required');
+    }
+
+    if (!req.file) {
+      res.status(400);
+      throw new Error('A face photo file is required');
+    }
+
+    const user = await User.findOne({ where: { email: normalizedEmail } });
+
+    if (!user) {
+      res.status(404);
+      throw new Error('User not found');
+    }
+
+    user.facePhoto = `/uploads/faces/${req.file.filename}`;
+    user.faceVerified = true;
+    await user.save();
+
+    return res.json({
+      message: 'Face photo uploaded successfully',
+      faceVerified: true
     });
   } catch (error) {
     next(error);
