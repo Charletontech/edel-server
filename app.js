@@ -14,9 +14,11 @@ const billingRoutes = require("./routes/billingRoutes");
 
 const app = express();
 const httpServer = http.createServer(app);
+
 const io = new Server(httpServer, {
   cors: {
-    origin: "*", // Adjust this in production
+    // origin: "*", // Adjust this in production
+    origin: "https://e-delhub.com",
     methods: ["GET", "POST"],
   },
 });
@@ -70,19 +72,19 @@ const startServer = async () => {
     await sequelize.authenticate();
     console.log("Database connection has been established successfully.");
 
-    try {
-      await sequelize.query(
-        "UPDATE Users SET availabilityStatus = 'away' WHERE availabilityStatus = 'unavailable';",
-      );
-      console.log(
-        "Pre-sync migration: converted 'unavailable' availability status to 'away'.",
-      );
-    } catch (err) {
-      console.log(
-        "Pre-sync migration notice (non-critical if table does not exist):",
-        err.message,
-      );
-    }
+    // try {
+    //   await sequelize.query(
+    //     "UPDATE Users SET availabilityStatus = 'away' WHERE availabilityStatus = 'unavailable';",
+    //   );
+    //   console.log(
+    //     "Pre-sync migration: converted 'unavailable' availability status to 'away'.",
+    //   );
+    // } catch (err) {
+    //   console.log(
+    //     "Pre-sync migration notice (non-critical if table does not exist):",
+    //     err.message,
+    //   );
+    // }
 
     await sequelize.sync({ alter: true }); // { alter: true }
     console.log("Database synced successfully.");
