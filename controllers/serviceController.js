@@ -35,11 +35,12 @@ const buildDiscoveryItem = (service, viewerLat, viewerLng) => {
       profilePhoto: provider.profilePhoto,
       rating: Number(provider.rating || 50),
       tier: provider.tier,
-      hasPaidAccessFee: Boolean(provider.hasPaidAccessFee),
+      hasPaidAccessFee: Boolean(provider.hasPaidAccessFee && provider.accessFeeExpiresAt && new Date(provider.accessFeeExpiresAt) > new Date()),
       availabilityStatus: provider.availabilityStatus,
       locationLabel: provider.locationLabel,
       latitude: Number(provider.latitude),
-      longitude: Number(provider.longitude)
+      longitude: Number(provider.longitude),
+      jobsCompleted: provider.jobsCompleted || 0
     }
   };
 };
@@ -168,10 +169,12 @@ exports.getDiscoveryFeed = async (req, res, next) => {
             'rating',
             'tier',
             'hasPaidAccessFee',
+            'accessFeeExpiresAt',
             'availabilityStatus',
             'locationLabel',
             'latitude',
-            'longitude'
+            'longitude',
+            'jobsCompleted'
           ]
         }
       ],

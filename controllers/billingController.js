@@ -17,12 +17,15 @@ exports.getBillingStatus = async (req, res, next) => {
     const freeLimit = await getPlatformSettingValue('provider_free_order_limit') || 3;
     const accessFeeAmount = await getPlatformSettingValue('provider_access_fee_amount') || 3500;
 
+    const isAccessFeeActive = user.hasPaidAccessFee && user.accessFeeExpiresAt && new Date(user.accessFeeExpiresAt) > new Date();
+
     res.json({
       jobsCompleted: user.jobsCompleted,
-      hasPaidAccessFee: user.hasPaidAccessFee,
+      hasPaidAccessFee: isAccessFeeActive,
+      accessFeeExpiresAt: user.accessFeeExpiresAt,
       freeOrdersLimit: freeLimit,
       accessFeeAmount: accessFeeAmount,
-      requiresPayment: user.jobsCompleted >= freeLimit && !user.hasPaidAccessFee,
+      requiresPayment: user.jobsCompleted >= freeLimit && !isAccessFeeActive,
       paystackPublicKey: process.env.PAYSTACK_PUBLIC_KEY
     });
   } catch (error) {
@@ -37,8 +40,9 @@ exports.initializePayment = async (req, res, next) => {
   try {
     const user = await User.findByPk(req.user.id);
     
-    if (user.hasPaidAccessFee) {
-      return res.status(400).json({ message: 'You have already paid the access fee.' });
+    const isAccessFeeActive = user.hasPaidAccessFee && user.accessFeeExpiresAt && new Date(user.accessFeeExpiresAt) > new Date();
+    if (isAccessFeeActive) {
+      return res.status(400).json({ message: 'You have already paid the access fee and it is currently active.' });
     }
 
     const amount = await getPlatformSettingValue('provider_access_fee_amount') || 3500;
@@ -135,35 +139,75 @@ exports.verifyPayment = async (req, res, next) => {
       paystackRes.on('end', async () => {
         const responseData = JSON.parse(data);
         if (responseData.status && responseData.data.status === 'success') {
-          // Find transaction
-          const transaction = await Transaction.findOne({ where: { reference } });
-          if (!transaction) {
-            return res.status(404).json({ message: 'Transaction not found' });
+          const dbTransaction = await Transaction.sequelize.transaction();
+          try {
+            // Find transaction with write lock to prevent concurrent verification checks
+            const transaction = await Transaction.findOne({
+              where: { reference },
+              transaction: dbTransaction,
+              lock: dbTransaction.LOCK.UPDATE
+            });
+
+            if (!transaction) {
+              await dbTransaction.rollback();
+              return res.status(404).json({ message: 'Transaction not found' });
+            }
+
+            if (transaction.status === 'success') {
+              await dbTransaction.rollback();
+              return res.json({ message: 'Payment already verified', transaction });
+            }
+
+            // Update transaction status
+            transaction.status = 'success';
+            transaction.paidAt = new Date();
+            await transaction.save({ transaction: dbTransaction });
+
+            // Update user with lock to prevent concurrent expiry updates
+            const user = await User.findByPk(transaction.userId, {
+              transaction: dbTransaction,
+              lock: dbTransaction.LOCK.UPDATE
+            });
+
+            if (user) {
+              user.hasPaidAccessFee = true;
+              
+              const now = new Date();
+              let newExpiry = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days from now
+              
+              // If they pay before it expires, extend it from the current expiry date
+              if (user.accessFeeExpiresAt && new Date(user.accessFeeExpiresAt) > now) {
+                newExpiry = new Date(new Date(user.accessFeeExpiresAt).getTime() + 30 * 24 * 60 * 60 * 1000);
+              }
+              
+              user.accessFeeExpiresAt = newExpiry;
+              await user.save({ transaction: dbTransaction });
+            }
+
+            await dbTransaction.commit();
+            res.json({ message: 'Payment verified successfully', transaction });
+          } catch (error) {
+            await dbTransaction.rollback();
+            next(error);
           }
-
-          if (transaction.status === 'success') {
-            return res.json({ message: 'Payment already verified', transaction });
-          }
-
-          // Update transaction
-          transaction.status = 'success';
-          transaction.paidAt = new Date();
-          await transaction.save();
-
-          // Update user
-          const user = await User.findByPk(transaction.userId);
-          if (user) {
-            user.hasPaidAccessFee = true;
-            await user.save();
-          }
-
-          res.json({ message: 'Payment verified successfully', transaction });
         } else {
-          // Find transaction and mark failed
-          const transaction = await Transaction.findOne({ where: { reference } });
-          if (transaction && transaction.status === 'pending') {
-            transaction.status = 'failed';
-            await transaction.save();
+          // Find transaction and mark failed inside transaction block with lock
+          const dbTransaction = await Transaction.sequelize.transaction();
+          try {
+            const transaction = await Transaction.findOne({
+              where: { reference },
+              transaction: dbTransaction,
+              lock: dbTransaction.LOCK.UPDATE
+            });
+
+            if (transaction && transaction.status === 'pending') {
+              transaction.status = 'failed';
+              await transaction.save({ transaction: dbTransaction });
+            }
+            await dbTransaction.commit();
+          } catch (error) {
+            await dbTransaction.rollback();
+            console.error('[Billing] Error marking transaction as failed:', error.message);
           }
           res.status(400).json({ message: 'Payment verification failed or pending', data: responseData.data });
         }

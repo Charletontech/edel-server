@@ -285,9 +285,10 @@ exports.acceptOrder = async (req, res, next) => {
 
     const { getPlatformSettingValue } = require('../utils/platformSettings');
     const freeLimit = await getPlatformSettingValue('provider_free_order_limit') || 3;
-    if (provider.jobsCompleted >= freeLimit && !provider.hasPaidAccessFee) {
+    const isAccessFeeActive = provider.hasPaidAccessFee && provider.accessFeeExpiresAt && new Date(provider.accessFeeExpiresAt) > new Date();
+    if (provider.jobsCompleted >= freeLimit && !isAccessFeeActive) {
       res.status(403);
-      throw new Error('Access Fee Required: You have reached the free order limit. Please pay the one-time access fee to continue accepting orders.');
+      throw new Error('Access Fee Required: You have reached the free order limit or your access fee has expired. Please pay the platform access fee to continue accepting orders.');
     }
 
     order.status = 'accepted';
@@ -583,6 +584,13 @@ exports.completeOrder = async (req, res, next) => {
       }
       
       await provider.save();
+    }
+
+    const customer = await User.findByPk(order.customerId);
+    if (customer) {
+      // Assuming no provider-side report feature exists yet, we just increment.
+      customer.rating = Math.min(100, (Number(customer.rating) || 50) + 10);
+      await customer.save();
     }
 
     // Emit via WebSocket
