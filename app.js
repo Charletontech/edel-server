@@ -18,7 +18,7 @@ const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
   cors: {
     // origin: "*", // Adjust this in production
-    origin: "https://e-delhub.com",
+    origin: "https://e-del.netlify.app", //
     methods: ["GET", "POST"],
   },
 });
