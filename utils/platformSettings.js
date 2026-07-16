@@ -40,6 +40,11 @@ const SETTING_DEFINITIONS = [
     key: 'enable_categories_view_for_providers',
     value: 0,
     description: 'Group services into categories for providers (1 = Yes, 0 = No)'
+  },
+  {
+    key: 'location_stale_threshold_km',
+    value: 15,
+    description: 'Distance threshold (in km) to alert a user if they moved far from their saved location (Default: 15)'
   }
 ];
 

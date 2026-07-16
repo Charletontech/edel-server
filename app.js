@@ -11,6 +11,7 @@ const serviceRoutes = require("./routes/serviceRoutes");
 const orderRoutes = require("./routes/orderRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const billingRoutes = require("./routes/billingRoutes");
+const locationRoutes = require("./routes/locationRoutes");
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -19,7 +20,7 @@ const io = new Server(httpServer, {
   cors: {
     // origin: "*", // Adjust this in production
     origin: "https://e-del.netlify.app", //
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "PUT", "DELETE"],
   },
 });
 
@@ -40,6 +41,7 @@ app.use(
 
 // Routes
 app.use("/api/auth", authRoutes);
+app.use("/api/location", locationRoutes); // must be before /api catch-all userRoutes
 app.use("/api", userRoutes);
 app.use("/api/services", serviceRoutes);
 app.use("/api/orders", orderRoutes);
@@ -72,21 +74,7 @@ const startServer = async () => {
     await sequelize.authenticate();
     console.log("Database connection has been established successfully.");
 
-    // try {
-    //   await sequelize.query(
-    //     "UPDATE Users SET availabilityStatus = 'away' WHERE availabilityStatus = 'unavailable';",
-    //   );
-    //   console.log(
-    //     "Pre-sync migration: converted 'unavailable' availability status to 'away'.",
-    //   );
-    // } catch (err) {
-    //   console.log(
-    //     "Pre-sync migration notice (non-critical if table does not exist):",
-    //     err.message,
-    //   );
-    // }
-
-    await sequelize.sync({ alter: true }); // { alter: true }
+    await sequelize.sync({ alter: true });
     console.log("Database synced successfully.");
 
     const server = httpServer.listen(PORT, "0.0.0.0", () => {

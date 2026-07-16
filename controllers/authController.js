@@ -93,21 +93,14 @@ exports.registerUser = async (req, res, next) => {
       longitude === '' || longitude === null || typeof longitude === 'undefined'
         ? null
         : Number(longitude);
-    if (!normalizedLocationLabel) {
-      res.status(400);
-      throw new Error('Location name is required');
-    }
 
-    const hasLatitude = normalizedLatitude !== null;
-    const hasLongitude = normalizedLongitude !== null;
-
+    // Validate coordinates only when provided (they must be valid numbers)
     if (
-      Number.isNaN(normalizedLatitude) ||
-      Number.isNaN(normalizedLongitude) ||
-      hasLatitude !== hasLongitude
+      (normalizedLatitude !== null && Number.isNaN(normalizedLatitude)) ||
+      (normalizedLongitude !== null && Number.isNaN(normalizedLongitude))
     ) {
       res.status(400);
-      throw new Error('Location coordinates must be valid when provided');
+      throw new Error('Location coordinates must be valid numbers when provided');
     }
 
     const userExists = await User.findOne({ where: { email: normalizedEmail } });
