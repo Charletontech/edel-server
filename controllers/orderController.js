@@ -51,7 +51,8 @@ const serializeOrder = (order) => {
           locationLabel: order.customerLocationLabel,
           latitude: Number(order.customerLat),
           longitude: Number(order.customerLng),
-          profilePhoto: customer.profilePhoto
+          profilePhoto: customer.profilePhoto,
+          faceVerified: !!customer.faceVerified || !!customer.facePhoto
         }
       : null,
     provider: provider
@@ -75,7 +76,7 @@ const getActivityIncludes = () => ([
   {
     model: User,
     as: 'customer',
-    attributes: ['id', 'fullName', 'email', 'phoneNumber', 'profilePhoto', 'latitude', 'longitude']
+    attributes: ['id', 'fullName', 'email', 'phoneNumber', 'profilePhoto', 'faceVerified', 'facePhoto', 'latitude', 'longitude']
   },
   {
     model: User,
@@ -533,6 +534,10 @@ exports.completeOrder = async (req, res, next) => {
     if (order.providerId !== req.user.id) {
       res.status(403);
       throw new Error('You are not authorized for this order');
+    }
+
+    if (order.status === 'completed') {
+      return res.json({ message: 'Order completed successfully' });
     }
 
     if (order.status !== 'in_progress') {

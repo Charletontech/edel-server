@@ -12,6 +12,7 @@ const orderRoutes = require("./routes/orderRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const billingRoutes = require("./routes/billingRoutes");
 const locationRoutes = require("./routes/locationRoutes");
+const atlasRoutes = require("./routes/atlasRoutes");
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -47,6 +48,7 @@ app.use("/api/services", serviceRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/billing", billingRoutes);
+app.use("/api/atlas", atlasRoutes);
 
 app.get("/", (req, res) => {
   res.send("E-del API is running...");
@@ -74,7 +76,7 @@ const startServer = async () => {
     await sequelize.authenticate();
     console.log("Database connection has been established successfully.");
 
-    await sequelize.sync({ alter: true });
+    await sequelize.sync({ alter: true }); // { alter: true }
     console.log("Database synced successfully.");
 
     const server = httpServer.listen(PORT, "0.0.0.0", () => {

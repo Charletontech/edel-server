@@ -387,7 +387,7 @@ exports.getUserDetail = async (req, res, next) => {
       throw new Error('User not found');
     }
 
-    const [customerOrders, providerOrders] = await Promise.all([
+    const [customerOrders, providerOrders, referralCount] = await Promise.all([
       Order.findAll({
         where: { customerId: user.id },
         include: getOrderIncludes(false),
@@ -399,7 +399,8 @@ exports.getUserDetail = async (req, res, next) => {
         include: getOrderIncludes(false),
         order: [['createdAt', 'DESC']],
         limit: 5
-      })
+      }),
+      User.count({ where: { referredById: user.id } })
     ]);
 
     res.json({
@@ -410,6 +411,8 @@ exports.getUserDetail = async (req, res, next) => {
         longitude: user.longitude === null ? null : Number(user.longitude),
         suspensionReason: user.suspensionReason,
         suspendedAt: user.suspendedAt,
+        referralCode: user.referralCode || null,
+        referralCount,
         services: (user.services || []).map(serializeServiceSummary),
         recentCustomerOrders: customerOrders.map(buildOrderResponse),
         recentProviderOrders: providerOrders.map(buildOrderResponse)
@@ -751,7 +754,7 @@ exports.reviewReport = async (req, res, next) => {
         customer.suspendedAt = new Date();
         
         const penalty = Number(await getPlatformSettingValue('customer_complaint_penalty')) || 2;
-        customer.rating = Math.max(0, (Number(customer.rating) || 100) - penalty);
+        customer.rating = Math.max(0, (Number(customer.rating) || 50) - penalty);
 
         await customer.save();
         await logAdminAction(req.user.id, 'user', customer.id, 'suspend_user', adminNote, {

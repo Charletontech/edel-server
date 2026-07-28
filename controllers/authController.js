@@ -26,6 +26,7 @@ const serializeUser = (user, { includeToken = true } = {}) => ({
   profilePhoto: user.profilePhoto,
   facePhoto: user.facePhoto,
   faceVerified: user.faceVerified,
+  referralCode: user.referralCode || null,
   accountStatus: user.accountStatus,
   token: includeToken ? generateToken(user.id) : undefined
 });
@@ -73,7 +74,9 @@ exports.registerUser = async (req, res, next) => {
       locationLabel,
       latitude,
       longitude,
-      role
+      role,
+      referralCode,
+      ref
     } = req.body || {};
 
     // Handle file upload
@@ -93,6 +96,16 @@ exports.registerUser = async (req, res, next) => {
       longitude === '' || longitude === null || typeof longitude === 'undefined'
         ? null
         : Number(longitude);
+
+    // Check referrer if referral code provided
+    let referredById = null;
+    const targetRefCode = (referralCode || ref || '').trim().toUpperCase();
+    if (targetRefCode) {
+      const referrer = await User.findOne({ where: { referralCode: targetRefCode } });
+      if (referrer) {
+        referredById = referrer.id;
+      }
+    }
 
     // Validate coordinates only when provided (they must be valid numbers)
     if (
@@ -133,6 +146,7 @@ exports.registerUser = async (req, res, next) => {
       role: normalizedRole,
       emailVerified: false,
       profilePhoto: profilePhotoPath,
+      referredById
     });
 
     if (user) {
@@ -380,23 +394,15 @@ exports.resetPassword = async (req, res, next) => {
 };
 // @desc    Upload face photo for verification
 // @route   POST /api/auth/upload-face
-// @access  Public (user identified by email in body)
+// @access  Private (JWT required)
 exports.uploadFacePhoto = async (req, res, next) => {
   try {
-    const { email } = req.body || {};
-    const normalizedEmail = email ? email.trim().toLowerCase() : '';
-
-    if (!normalizedEmail) {
-      res.status(400);
-      throw new Error('Email is required');
-    }
-
     if (!req.file) {
       res.status(400);
       throw new Error('A face photo file is required');
     }
 
-    const user = await User.findOne({ where: { email: normalizedEmail } });
+    const user = await User.findByPk(req.user.id);
 
     if (!user) {
       res.status(404);

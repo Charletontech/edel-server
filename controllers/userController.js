@@ -35,6 +35,10 @@ exports.getDashboard = async (req, res, next) => {
       limit: 10
     });
 
+    const referralCount = await User.count({ where: { referredById: user.id } });
+    const publicWebBaseUrl = process.env.PUBLIC_WEB_BASE_URL || 'http://localhost:5500';
+    const referralLink = user.referralCode ? `${publicWebBaseUrl.replace(/\/$/, '')}/auth/?ref=${encodeURIComponent(user.referralCode)}` : null;
+
     res.json({
       user: {
         id: user.id,
@@ -54,9 +58,14 @@ exports.getDashboard = async (req, res, next) => {
         availabilityStatus: user.availabilityStatus,
         services: user.services,
         profilePhoto: user.profilePhoto,
+        facePhoto: user.facePhoto,
+        faceVerified: !!user.faceVerified || !!user.facePhoto,
         pushNotifications: user.pushNotifications,
         emailAlerts: user.emailAlerts,
-        smsUpdates: user.smsUpdates
+        smsUpdates: user.smsUpdates,
+        referralCode: user.referralCode || null,
+        referralLink,
+        referralCount
       },
       reports: reports.map(order => ({
         id: order.id,
@@ -66,7 +75,7 @@ exports.getDashboard = async (req, res, next) => {
         reportStatus: order.reportStatus || 'open',
         reportResolution: order.reportResolution,
         adminNote: order.adminNote,
-        isReporter: order.customerId === user.id // For now we assume customer reports provider
+        isReporter: order.customerId === user.id
       }))
     });
   } catch (error) {
@@ -378,6 +387,46 @@ exports.updateProfilePhoto = async (req, res, next) => {
     res.json({
       message: 'Profile photo updated successfully',
       profilePhoto: user.profilePhoto
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Generate and save referral code for user
+// @route   POST /api/users/generate-referral
+// @access  Private
+exports.generateReferralCode = async (req, res, next) => {
+  try {
+    const user = await User.findByPk(req.user.id);
+    if (!user) {
+      res.status(404);
+      throw new Error('User not found');
+    }
+
+    if (!user.referralCode) {
+      const crypto = require('crypto');
+      let isUnique = false;
+      let code = '';
+      while (!isUnique) {
+        const randomStr = crypto.randomBytes(4).toString('hex').toUpperCase();
+        code = `EDEL-${randomStr}`;
+        const existing = await User.findOne({ where: { referralCode: code } });
+        if (!existing) isUnique = true;
+      }
+      user.referralCode = code;
+      await user.save();
+    }
+
+    const referralCount = await User.count({ where: { referredById: user.id } });
+    const publicWebBaseUrl = process.env.PUBLIC_WEB_BASE_URL || 'http://localhost:5500';
+    const referralLink = `${publicWebBaseUrl.replace(/\/$/, '')}/auth/?ref=${encodeURIComponent(user.referralCode)}`;
+
+    res.json({
+      message: 'Referral link generated successfully',
+      referralCode: user.referralCode,
+      referralLink,
+      referralCount
     });
   } catch (error) {
     next(error);

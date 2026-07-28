@@ -10,11 +10,14 @@ const {
   upgradeAccount,
   updateLocation,
   updateProfilePhoto,
+  generateReferralCode,
 } = require('../controllers/userController');
 const { protect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
 
 router.get('/dashboard', protect, getDashboard);
+router.post('/generate-referral', protect, generateReferralCode);
+router.post('/users/generate-referral', protect, generateReferralCode);
 router.post('/upgrade', protect, upload.single('businessPhoto'), upgradeAccount);
 router.put('/status', protect, updateStatus);
 router.put('/profile', protect, updateProfile);

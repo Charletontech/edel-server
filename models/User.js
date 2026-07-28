@@ -136,6 +136,24 @@ const User = sequelize.define('User', {
   passwordResetExpiresAt: {
     type: DataTypes.DATE,
     allowNull: true
+  },
+  facePhoto: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  faceVerified: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
+  },
+  referralCode: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    unique: true
+  },
+  referredById: {
+    type: DataTypes.INTEGER,
+    allowNull: true
   }
 }, {
   indexes: [
@@ -145,7 +163,9 @@ const User = sequelize.define('User', {
     { fields: ['availabilityStatus'] },
     { fields: ['latitude'] },
     { fields: ['longitude'] },
-    { fields: ['passwordResetTokenHash'] }
+    { fields: ['passwordResetTokenHash'] },
+    { unique: true, fields: ['referralCode'] },
+    { fields: ['referredById'] }
   ],
   hooks: {
     beforeCreate: async (user) => {

@@ -7,12 +7,17 @@ const PlatformSetting = require('./PlatformSetting');
 const AdminActionLog = require('./AdminActionLog');
 const Transaction = require('./Transaction');
 const Category = require('./Category');
+const AtlasCheckout = require('./AtlasCheckout');
 
 // Associations
 User.hasMany(Service, { foreignKey: 'userId', as: 'services' });
 Service.belongsTo(User, { foreignKey: 'userId', as: 'provider' });
 User.hasMany(Transaction, { foreignKey: 'userId', as: 'transactions' });
 Transaction.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+User.hasMany(AtlasCheckout, { foreignKey: 'userId', as: 'atlasCheckouts' });
+AtlasCheckout.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+Transaction.hasOne(AtlasCheckout, { foreignKey: 'transactionId', as: 'atlasCheckout' });
+AtlasCheckout.belongsTo(Transaction, { foreignKey: 'transactionId', as: 'transaction' });
 User.hasMany(Order, { foreignKey: 'customerId', as: 'customerOrders' });
 User.hasMany(Order, { foreignKey: 'providerId', as: 'providerOrders' });
 Order.belongsTo(User, { foreignKey: 'customerId', as: 'customer' });
@@ -35,6 +40,8 @@ PlatformSetting.belongsTo(User, { foreignKey: 'updatedByAdminId', as: 'updatedBy
 User.hasMany(PlatformSetting, { foreignKey: 'updatedByAdminId', as: 'updatedSettings' });
 AdminActionLog.belongsTo(User, { foreignKey: 'adminUserId', as: 'adminUser' });
 User.hasMany(AdminActionLog, { foreignKey: 'adminUserId', as: 'adminActions' });
+User.hasMany(User, { foreignKey: 'referredById', as: 'referrals' });
+User.belongsTo(User, { foreignKey: 'referredById', as: 'referrer' });
 
 module.exports = {
   User,
@@ -45,5 +52,6 @@ module.exports = {
   PlatformSetting,
   AdminActionLog,
   Transaction,
-  Category
+  Category,
+  AtlasCheckout
 };

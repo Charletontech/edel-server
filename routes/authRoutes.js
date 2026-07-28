@@ -10,6 +10,7 @@ const {
   uploadFacePhoto
 } = require('../controllers/authController');
 const upload = require('../middleware/uploadMiddleware');
+const { protect } = require('../middleware/authMiddleware');
 
 router.post('/signup', upload.single('profilePhoto'), registerUser);
 router.post('/login', loginUser);
@@ -17,6 +18,7 @@ router.post('/verify-email', verifyEmail);
 router.post('/resend-verification', resendVerificationEmail);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
-router.post('/upload-face', upload.single('facePhoto'), uploadFacePhoto);
+// Secured: face verification is now a post-login action only.
+router.post('/upload-face', protect, upload.single('facePhoto'), uploadFacePhoto);
 
 module.exports = router;
