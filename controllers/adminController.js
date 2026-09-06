@@ -7,7 +7,8 @@ const {
   Verification,
   PlatformSetting,
   AdminActionLog,
-  Category
+  Category,
+  Business
 } = require('../models');
 
 // --- Category Management ---
@@ -25,16 +26,17 @@ exports.getAdminCategories = async (req, res, next) => {
 
 exports.createCategory = async (req, res, next) => {
   try {
-    const { name, iconName, isActive } = req.body;
-    
-    if (!name || !iconName) {
+    const { name, iconName, isActive, type } = req.body;
+
+    if (!name || name.trim().length === 0) {
       res.status(400);
-      throw new Error('Name and Icon Name are required');
+      throw new Error('Category name is required');
     }
 
     const category = await Category.create({
       name: name.toLowerCase(),
       iconName,
+      type: type || 'Service',
       isActive: isActive !== undefined ? isActive : true
     });
 
@@ -46,7 +48,7 @@ exports.createCategory = async (req, res, next) => {
 
 exports.updateCategory = async (req, res, next) => {
   try {
-    const { name, iconName, isActive } = req.body;
+    const { name, iconName, isActive, type } = req.body;
     const category = await Category.findByPk(req.params.id);
 
     if (!category) {
@@ -57,6 +59,7 @@ exports.updateCategory = async (req, res, next) => {
     if (name) category.name = name.toLowerCase();
     if (iconName) category.iconName = iconName;
     if (isActive !== undefined) category.isActive = isActive;
+    if (type) category.type = type;
 
     await category.save();
     res.json(category);
@@ -76,6 +79,25 @@ exports.deleteCategory = async (req, res, next) => {
 
     await category.destroy();
     res.json({ message: 'Category removed' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// --- Business Tracking ---
+exports.getRegisteredBusinesses = async (req, res, next) => {
+  try {
+    const businesses = await Business.findAll({
+      include: [
+        {
+          model: User,
+          as: 'provider',
+          attributes: ['id', 'fullName', 'email', 'phone']
+        }
+      ],
+      order: [['createdAt', 'DESC']]
+    });
+    res.json(businesses);
   } catch (error) {
     next(error);
   }

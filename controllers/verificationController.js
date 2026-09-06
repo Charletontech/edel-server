@@ -95,11 +95,13 @@ exports.startSession = async (req, res, next) => {
       });
     }
 
+    const token = Math.floor(100000 + Math.random() * 900000).toString();
+
     const session = await Session.create({
       sessionId: crypto.randomUUID(),
       orderId: normalizedOrderId,
       customerId: req.user.id,
-      token: crypto.randomBytes(24).toString('hex'),
+      token: token,
       customerLat: normalizedLat,
       customerLng: normalizedLng,
       customerAccuracy: normalizedAccuracy,
@@ -132,6 +134,7 @@ exports.verifySession = async (req, res, next) => {
     const {
       session_id,
       sessionId,
+      orderId, // Added for token fallback
       token,
       provider_lat,
       provider_lng,
@@ -139,13 +142,14 @@ exports.verifySession = async (req, res, next) => {
     } = req.body || {};
 
     const requestedSessionId = session_id || sessionId;
+    const normalizedOrderId = toNumber(orderId);
     const normalizedProviderLat = toNumber(provider_lat);
     const normalizedProviderLng = toNumber(provider_lng);
     const normalizedProviderAccuracy = toNumber(provider_accuracy);
 
-    if (!requestedSessionId || !token) {
+    if ((!requestedSessionId && !normalizedOrderId) || !token) {
       res.status(400);
-      throw new Error('Invalid session');
+      throw new Error('Invalid verification request');
     }
 
     if ([normalizedProviderLat, normalizedProviderLng, normalizedProviderAccuracy].some((value) => value === null)) {
@@ -158,8 +162,11 @@ exports.verifySession = async (req, res, next) => {
       throw new Error('Location accuracy too poor to verify');
     }
 
+    const whereClause = requestedSessionId ? { sessionId: requestedSessionId } : { orderId: normalizedOrderId, status: 'pending' };
+
     const session = await Session.findOne({
-      where: { sessionId: requestedSessionId },
+      where: whereClause,
+      order: [['createdAt', 'DESC']],
       include: [
         {
           model: Order,

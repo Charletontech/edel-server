@@ -13,6 +13,7 @@ const adminRoutes = require("./routes/adminRoutes");
 const billingRoutes = require("./routes/billingRoutes");
 const locationRoutes = require("./routes/locationRoutes");
 const atlasRoutes = require("./routes/atlasRoutes");
+const businessRoutes = require("./routes/businessRoutes");
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -20,7 +21,7 @@ const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
   cors: {
     // origin: "*", // Adjust this in production
-    origin: "https://e-del.netlify.app", //
+    origin: "https://e-delhub.netlify.app", //
     methods: ["GET", "POST", "PUT", "DELETE"],
   },
 });
@@ -28,6 +29,8 @@ const io = new Server(httpServer, {
 app.set("io", io);
 
 // Middleware
+const helmet = require("helmet");
+app.use(helmet({ crossOriginResourcePolicy: false })); // Disabled CORP to allow images from /uploads to load on frontend
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -40,6 +43,36 @@ app.use(
   }),
 );
 
+// Rate Limiting
+const rateLimit = require("express-rate-limit");
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 150,
+  message: {
+    message:
+      "Too many requests from this IP, please try again after 15 minutes",
+  },
+});
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: {
+    message: "Too many authentication attempts, please try again later",
+  },
+});
+const webhookLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 50,
+  message: {
+    message: "Too many webhook requests, please try again later",
+  },
+});
+
+// Apply rate limiters
+app.use("/api/", apiLimiter);
+app.use("/api/auth", authLimiter);
+app.use("/api/atlas/webhook", webhookLimiter);
+
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/location", locationRoutes); // must be before /api catch-all userRoutes
@@ -49,6 +82,7 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/billing", billingRoutes);
 app.use("/api/atlas", atlasRoutes);
+app.use("/api/businesses", businessRoutes);
 
 app.get("/", (req, res) => {
   res.send("E-del API is running...");

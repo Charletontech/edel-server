@@ -6,8 +6,7 @@ const {
   canUseProviderFeatures
 } = require('../utils/sessionRole');
 const crypto = require('crypto');
-
-const OPEN_STATUSES = ['pending', 'accepted', 'in_progress'];
+const OPEN_STATUSES = ['pending', 'accepted', 'in_progress', 'completion_requested'];
 
 const serializeOrder = (order) => {
   if (!order) return null;
@@ -386,7 +385,7 @@ exports.cancelOrder = async (req, res, next) => {
     order.cancellationReason = reason ? reason.trim() : null;
     await order.save();
 
-    if (previousStatus === 'accepted') {
+    if (['accepted', 'in_progress', 'completion_requested'].includes(previousStatus)) {
       const provider = await User.findByPk(order.providerId);
       if (provider && provider.availabilityStatus === 'busy') {
         provider.availabilityStatus = 'available';
@@ -608,6 +607,120 @@ exports.completeOrder = async (req, res, next) => {
     res.json({
       message: 'Order completed successfully'
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Provider requests completion without token
+// @route   POST /api/orders/:id/request-completion
+exports.requestCompletion = async (req, res, next) => {
+  try {
+    const order = await Order.findByPk(req.params.id);
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+    if (order.providerId !== req.user.id) {
+      throw new Error('Only the assigned provider can request completion');
+    }
+    if (order.status !== 'in_progress') {
+      throw new Error('Only in-progress orders can be requested for completion');
+    }
+
+    order.status = 'completion_requested';
+    await order.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`order_${order.id}`).emit('orderStatusChanged', { status: 'completion_requested', orderId: order.id });
+      io.to(`user_${order.customerId}`).emit('completionRequested', { orderId: order.id });
+    }
+
+    res.json({ message: 'Completion requested. Waiting for customer confirmation.' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Customer confirms job completion
+// @route   POST /api/orders/:id/confirm-completion
+exports.confirmCompletion = async (req, res, next) => {
+  try {
+    const order = await Order.findByPk(req.params.id);
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+    if (order.customerId !== req.user.id) {
+      throw new Error('Only the customer can confirm completion');
+    }
+    if (order.status !== 'completion_requested') {
+      throw new Error('Order is not waiting for completion confirmation');
+    }
+
+    order.status = 'completed';
+    await order.save();
+
+    // Reward metrics
+    const { User } = require('../models');
+    const provider = await User.findByPk(order.providerId);
+    if (provider) {
+      if (provider.availabilityStatus === 'busy') {
+        provider.availabilityStatus = 'available';
+      }
+
+      provider.jobsCompleted = (provider.jobsCompleted || 0) + 1;
+      const jobs = provider.jobsCompleted;
+      let newRating = Number(provider.rating) || 50;
+      if (jobs < 10) newRating += 5;
+      else if (jobs < 50) newRating += 2;
+      else newRating += 1;
+      provider.rating = Math.min(100, newRating);
+      await provider.save();
+    }
+
+    const customer = await User.findByPk(order.customerId);
+    if (customer) {
+      customer.rating = Math.min(100, (Number(customer.rating) || 50) + 10);
+      await customer.save();
+    }
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`order_${order.id}`).emit('orderStatusChanged', { status: 'completed', orderId: order.id });
+      io.to(`user_${order.providerId}`).emit('orderCompleted', { orderId: order.id });
+    }
+
+    res.json({ message: 'Order successfully completed' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Customer rejects job completion
+// @route   POST /api/orders/:id/reject-completion
+exports.rejectCompletion = async (req, res, next) => {
+  try {
+    const order = await Order.findByPk(req.params.id);
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+    if (order.customerId !== req.user.id) {
+      throw new Error('Only the customer can reject completion');
+    }
+    if (order.status !== 'completion_requested') {
+      throw new Error('Order is not waiting for completion confirmation');
+    }
+
+    order.status = 'in_progress';
+    await order.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`order_${order.id}`).emit('orderStatusChanged', { status: 'in_progress', orderId: order.id });
+      io.to(`user_${order.providerId}`).emit('completionRejected', { orderId: order.id });
+    }
+
+    res.json({ message: 'Completion rejected. Order is back in progress.' });
   } catch (error) {
     next(error);
   }

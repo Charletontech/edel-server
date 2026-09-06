@@ -15,6 +15,14 @@ const Service = sequelize.define('Service', {
       key: 'id'
     }
   },
+  businessId: {
+    type: DataTypes.UUID,
+    allowNull: true, // Allow null temporarily for migration
+    references: {
+      model: 'Businesses',
+      key: 'id'
+    }
+  },
   category: {
     type: DataTypes.STRING,
     allowNull: false
@@ -55,6 +63,7 @@ const Service = sequelize.define('Service', {
 }, {
   indexes: [
     { fields: ['userId'] },
+    { fields: ['businessId'] },
     { fields: ['serviceStatus'] },
     { fields: ['category'] },
     { fields: ['title'] }

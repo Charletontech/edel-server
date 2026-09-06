@@ -3,18 +3,19 @@ const crypto = require("crypto");
 const { User, Transaction, AtlasCheckout } = require("../models");
 const { getPlatformSettingValue } = require("../utils/platformSettings");
 
-const ATLAS_API_KEY = process.env.ATLAS_API_KEY;
+const ATLAS_API_KEY = process.env.ATLAS_API_KEY || process.env.API_KEY;
+const ATLAS_SECRET_KEY = process.env.ATLAS_SECRET_KEY || process.env.secret || ATLAS_API_KEY;
 const ATLAS_BASE_URL =
   process.env.ATLAS_BASE_URL || "https://atlas.tryduplo.com";
 const ATLAS_VERIFY_PATH_TEMPLATE =
   process.env.ATLAS_VERIFY_PATH_TEMPLATE ||
-  "/api/v1/checkout/verify/{reference}";
-// const ATLAS_VERIFY_PATH_TEMPLATE =
-// process.env.ATLAS_VERIFY_PATH_TEMPLATE + reference;
+  "/api/v1/checkout/verify-by-reference/{reference}";
 
 function atlasRequest(method, path, body) {
   return new Promise((resolve, reject) => {
-    if (!ATLAS_API_KEY) {
+    // Atlas requires the Public Key (ATLAS_API_KEY) for both initiating and verifying checkouts
+    const keyToUse = ATLAS_API_KEY || ATLAS_SECRET_KEY;
+    if (!keyToUse) {
       reject(new Error("Atlas API key is not configured"));
       return;
     }
@@ -29,7 +30,7 @@ function atlasRequest(method, path, body) {
         path: `${url.pathname}${url.search}`,
         method,
         headers: {
-          Authorization: `Bearer ${ATLAS_API_KEY}`,
+          Authorization: `Bearer ${keyToUse}`,
           "Content-Type": "application/json",
           ...(payload ? { "Content-Length": Buffer.byteLength(payload) } : {}),
         },
@@ -92,18 +93,45 @@ function splitName(fullName = "") {
 }
 
 function normalizeAtlasStatus(response) {
-  const data = response?.data || response || {};
-  const value = String(
-    data.status ||
-      data.transactionStatus ||
-      data.paymentStatus ||
-      data.checkoutStatus ||
-      response?.status ||
-      "",
-  ).toLowerCase();
+  if (!response) return "pending";
+
+  const data = response?.data || response;
 
   if (
-    ["success", "successful", "paid", "completed", "confirmed"].includes(value)
+    data.is_paid === true ||
+    data.paid === true ||
+    response.is_paid === true ||
+    response.paid === true
+  ) {
+    return "success";
+  }
+
+  const rawValue =
+    data.status ||
+    data.transactionStatus ||
+    data.transaction_status ||
+    data.paymentStatus ||
+    data.payment_status ||
+    data.checkoutStatus ||
+    data.checkout_status ||
+    data.state ||
+    response.status ||
+    response.state ||
+    "";
+
+  const value = String(rawValue).toLowerCase();
+
+  if (
+    [
+      "success",
+      "successful",
+      "paid",
+      "completed",
+      "confirmed",
+      "approved",
+      "passed",
+      "settled",
+    ].includes(value)
   ) {
     return "success";
   }
@@ -116,6 +144,8 @@ function normalizeAtlasStatus(response) {
       "canceled",
       "expired",
       "abandoned",
+      "declined",
+      "rejected",
     ].includes(value)
   ) {
     return "failed";
@@ -134,8 +164,8 @@ function buildVerifyPath(reference) {
 function isAccessFeeActive(user) {
   return Boolean(
     user.hasPaidAccessFee &&
-    user.accessFeeExpiresAt &&
-    new Date(user.accessFeeExpiresAt) > new Date(),
+      user.accessFeeExpiresAt &&
+      new Date(user.accessFeeExpiresAt) > new Date(),
   );
 }
 
@@ -196,8 +226,7 @@ async function markAccessFeePaid(checkout, verifyResponse) {
 
       if (user.accessFeeExpiresAt && new Date(user.accessFeeExpiresAt) > now) {
         newExpiry = new Date(
-          new Date(user.accessFeeExpiresAt).getTime() +
-            30 * 24 * 60 * 60 * 1000,
+          new Date(user.accessFeeExpiresAt).getTime() + 30 * 24 * 60 * 60 * 1000,
         );
       }
 
@@ -252,10 +281,32 @@ async function markAtlasFailed(checkout, verifyResponse) {
 }
 
 async function verifyCheckout(checkout) {
-  const reference = checkout.checkoutReference || checkout.sourceReference;
-  const response = await atlasRequest("GET", buildVerifyPath(reference));
-  const status = normalizeAtlasStatus(response);
-  return { response, status };
+  const refsToTry = [checkout.sourceReference, checkout.checkoutReference].filter(Boolean);
+  let lastResponse = null;
+  let lastStatus = "pending";
+
+  for (const ref of refsToTry) {
+    try {
+      const response = await atlasRequest("GET", buildVerifyPath(ref));
+      const status = normalizeAtlasStatus(response);
+      if (status === "success") {
+        return { response, status: "success" };
+      }
+      lastResponse = response;
+      lastStatus = status;
+    } catch (error) {
+      console.log(`[Atlas Verify] Ref '${ref}' check:`, error.message);
+      if (error.response) {
+        const status = normalizeAtlasStatus(error.response);
+        if (status === "success") {
+          return { response: error.response, status: "success" };
+        }
+        lastResponse = error.response;
+      }
+    }
+  }
+
+  return { response: lastResponse, status: lastStatus };
 }
 
 exports.initiateAccessFeeCheckout = async (req, res, next) => {
@@ -295,7 +346,7 @@ exports.initiateAccessFeeCheckout = async (req, res, next) => {
         lock: dbTransaction.LOCK.UPDATE,
       });
 
-      if (existingCheckout?.checkoutUrl) {
+      if (existingCheckout?.checkoutUrl && Number(existingCheckout.amount) === Number(amount)) {
         await dbTransaction.commit();
         return res.json({
           checkoutUrl: existingCheckout.checkoutUrl,
@@ -307,7 +358,7 @@ exports.initiateAccessFeeCheckout = async (req, res, next) => {
         });
       }
 
-      if (existingCheckout && !existingCheckout.checkoutUrl) {
+      if (existingCheckout && (Number(existingCheckout.amount) !== Number(amount) || !existingCheckout.checkoutUrl)) {
         existingCheckout.status = "failed";
         await existingCheckout.save({ transaction: dbTransaction });
 
@@ -359,6 +410,18 @@ exports.initiateAccessFeeCheckout = async (req, res, next) => {
     const user = await User.findByPk(req.user.id);
     const { firstName, lastName } = splitName(user.fullName);
 
+    let origin = process.env.PUBLIC_WEB_BASE_URL || "http://localhost:5500";
+    if (req.headers.origin) {
+      origin = req.headers.origin;
+    } else if (req.headers.referer) {
+      try {
+        origin = new URL(req.headers.referer).origin;
+      } catch (e) {}
+    }
+    const returnUrl = `${origin.replace(/\/$/, "")}/billing/?sourceReference=${createdCheckout.sourceReference}`;
+
+    const atlasState = ATLAS_API_KEY && ATLAS_API_KEY.includes("live") ? "live" : "test";
+
     const atlasResponse = await atlasRequest(
       "POST",
       "/api/v1/checkout/initiate",
@@ -370,6 +433,13 @@ exports.initiateAccessFeeCheckout = async (req, res, next) => {
         amount: Number(createdCheckout.amount),
         source_reference: createdCheckout.sourceReference,
         description: "E-del platform access fee",
+        state: atlasState,
+        redirect_url: returnUrl,
+        callback_url: returnUrl,
+        redirectUrl: returnUrl,
+        callbackUrl: returnUrl,
+        return_url: returnUrl,
+        returnUrl: returnUrl,
       },
     );
 
@@ -474,15 +544,19 @@ exports.handleAtlasWebhook = async (req, res, next) => {
       req.body?.checkout_reference;
 
     if (!sourceReference && !checkoutReference) {
-      return res.status(202).json({ message: "Webhook accepted" });
+      return res.status(200).json({ message: "Webhook accepted (no reference)" });
     }
 
-    const checkout = await AtlasCheckout.findOne({
-      where: sourceReference ? { sourceReference } : { checkoutReference },
-    });
+    let checkout = null;
+    if (sourceReference) {
+      checkout = await AtlasCheckout.findOne({ where: { sourceReference } });
+    }
+    if (!checkout && checkoutReference) {
+      checkout = await AtlasCheckout.findOne({ where: { checkoutReference } });
+    }
 
     if (!checkout || checkout.status === "success") {
-      return res.status(202).json({ message: "Webhook accepted" });
+      return res.status(200).json({ message: "Webhook accepted" });
     }
 
     const { response, status } = await verifyCheckout(checkout);
@@ -493,8 +567,9 @@ exports.handleAtlasWebhook = async (req, res, next) => {
       await markAtlasFailed(checkout, response);
     }
 
-    res.status(202).json({ message: "Webhook accepted" });
+    return res.status(200).json({ message: "Webhook processed", status });
   } catch (error) {
-    next(error);
+    console.error("[Atlas Webhook Error]:", error.message);
+    return res.status(200).json({ message: "Webhook received" });
   }
 };

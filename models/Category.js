@@ -20,6 +20,11 @@ const Category = sequelize.define('Category', {
   isActive: {
     type: DataTypes.BOOLEAN,
     defaultValue: true
+  },
+  type: {
+    type: DataTypes.ENUM('Product', 'Service'),
+    allowNull: false,
+    defaultValue: 'Service'
   }
 }, {
   indexes: [

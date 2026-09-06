@@ -8,6 +8,7 @@ const AdminActionLog = require('./AdminActionLog');
 const Transaction = require('./Transaction');
 const Category = require('./Category');
 const AtlasCheckout = require('./AtlasCheckout');
+const Business = require('./Business');
 
 // Associations
 User.hasMany(Service, { foreignKey: 'userId', as: 'services' });
@@ -22,6 +23,13 @@ User.hasMany(Order, { foreignKey: 'customerId', as: 'customerOrders' });
 User.hasMany(Order, { foreignKey: 'providerId', as: 'providerOrders' });
 Order.belongsTo(User, { foreignKey: 'customerId', as: 'customer' });
 Order.belongsTo(User, { foreignKey: 'providerId', as: 'provider' });
+
+User.hasMany(Business, { foreignKey: 'providerId', as: 'businesses' });
+Business.belongsTo(User, { foreignKey: 'providerId', as: 'provider' });
+
+Business.hasMany(Service, { foreignKey: 'businessId', as: 'items' });
+Service.belongsTo(Business, { foreignKey: 'businessId', as: 'business' });
+
 Service.hasMany(Order, { foreignKey: 'serviceId', as: 'orders' });
 Order.belongsTo(Service, { foreignKey: 'serviceId', as: 'service' });
 Order.hasMany(Session, { foreignKey: 'orderId', as: 'sessions' });
@@ -53,5 +61,6 @@ module.exports = {
   AdminActionLog,
   Transaction,
   Category,
-  AtlasCheckout
+  AtlasCheckout,
+  Business
 };

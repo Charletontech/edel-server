@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Service, User, Category } = require('../models');
+const { Service, User, Category, Order, Business } = require('../models');
 const { getBoundingBox, haversineDistanceKm } = require('../utils/location');
 const { canUseProviderFeatures } = require('../utils/sessionRole');
 const { getPlatformSettingValue } = require('../utils/platformSettings');
@@ -52,7 +52,7 @@ exports.getCategories = async (req, res, next) => {
   try {
     const categories = await Category.findAll({
       where: { isActive: true },
-      attributes: ['id', 'name', 'iconName'],
+      attributes: ['id', 'name', 'iconName', 'type'],
       order: [['name', 'ASC']]
     });
     res.json(categories);
@@ -88,6 +88,7 @@ exports.getDiscoveryFeed = async (req, res, next) => {
     );
     const search = (req.query.search || '').trim();
     const category = (req.query.category || '').trim();
+    const itemType = (req.query.type || 'all').trim().toLowerCase(); // 'all', 'product', 'service'
     const limit = Math.min(Math.max(Number(req.query.limit) || 24, 1), 48);
 
     if (requestedRole === 'provider') {
@@ -154,9 +155,23 @@ exports.getDiscoveryFeed = async (req, res, next) => {
       ];
     }
 
+    const businessWhere = {};
+    if (itemType === 'product') {
+      businessWhere.businessType = 'Product';
+    } else if (itemType === 'service') {
+      businessWhere.businessType = 'Service';
+    }
+
     const services = await Service.findAll({
       where: serviceWhere,
       include: [
+        {
+          model: Business,
+          as: 'business',
+          where: businessWhere,
+          required: true,
+          attributes: ['id', 'name', 'businessType']
+        },
         {
           model: User,
           as: 'provider',
@@ -219,29 +234,35 @@ exports.getDiscoveryFeed = async (req, res, next) => {
 // @access  Private (Provider only)
 exports.addService = async (req, res, next) => {
   try {
-    const { category, title, basePrice, description } = req.body;
+    const { businessId, title, basePrice, description } = req.body;
 
     if (!canUseProviderFeatures(req.user, req.sessionRole)) {
       res.status(403);
-      throw new Error('Only providers can add services');
+      throw new Error('Only providers can add items');
+    }
+
+    if (!businessId) {
+      res.status(400);
+      throw new Error('A business ID is required');
+    }
+
+    const business = await Business.findOne({ where: { id: businessId, providerId: req.user.id } });
+    if (!business) {
+      res.status(404);
+      throw new Error('Business not found or unauthorized');
     }
 
     if (!req.file) {
       res.status(400);
-      throw new Error('A business photo is required to create a service');
-    }
-
-    const serviceCount = await Service.count({ where: { userId: req.user.id } });
-    if (serviceCount >= 5) {
-      res.status(400);
-      throw new Error('Maximum of 5 services allowed');
+      throw new Error('A photo is required to create an item');
     }
 
     const businessPhoto = `/uploads/business-photos/${req.file.filename}`;
 
     const service = await Service.create({
       userId: req.user.id,
-      category,
+      businessId,
+      category: business.category, // Inherit category from business
       title,
       basePrice,
       description,

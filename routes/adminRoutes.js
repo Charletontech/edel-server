@@ -20,7 +20,8 @@ const {
   getAdminCategories,
   createCategory,
   updateCategory,
-  deleteCategory
+  deleteCategory,
+  getRegisteredBusinesses
 } = require('../controllers/adminController');
 const { protect, adminOnly } = require('../middleware/authMiddleware');
 
@@ -48,5 +49,7 @@ router.get('/categories', getAdminCategories);
 router.post('/categories', createCategory);
 router.put('/categories/:id', updateCategory);
 router.delete('/categories/:id', deleteCategory);
+
+router.get('/businesses', getRegisteredBusinesses);
 
 module.exports = router;
